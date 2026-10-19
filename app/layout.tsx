@@ -38,7 +38,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
             <Link href="/import">Import</Link>
             <Link href="/collection">Collection</Link>
-            <Link href="/signIn">Sign In</Link>
+            <Link href="/value">Value</Link>
+            <Link href="/transactions">Transactions</Link>
+
+            <Link href="/signin" className="ml-auto">
+              Sign In
+            </Link>
           </nav>
         </header>
 

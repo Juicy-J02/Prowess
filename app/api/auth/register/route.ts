@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import type { RowDataPacket } from "mysql2";
 import { db } from "@/lib/server/database";
-
-interface UserRow extends RowDataPacket {
-    id: number;
-    username: string;
-    email: string;
-    password_hash: string;
-}
 
 export async function POST(request: Request) {
     let body: unknown;
@@ -27,51 +19,73 @@ export async function POST(request: Request) {
         body === null ||
         !("email" in body) ||
         typeof body.email !== "string" ||
-        body.email.trim() === "" ||
+        !("username" in body) ||
+        typeof body.username !== "string" ||
         !("password" in body) ||
-        typeof body.password !== "string" ||
-        body.password === ""
+        typeof body.password !== "string"
     ) {
         return NextResponse.json(
-            { error: "Email and password are required." },
+            { error: "Email, username, and password are required." },
+            { status: 400 }
+        );
+    }
+
+    const email = body.email.trim();
+    const username = body.username.trim();
+    const password = body.password;
+
+    if (
+        email.length > 255 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        username.length === 0 ||
+        username.length > 50
+    ) {
+        return NextResponse.json(
+            { error: "Provide a valid email and a username of 1–50 characters." },
+            { status: 400 }
+        );
+    }
+
+    if (
+        password.length < 8 ||
+        new TextEncoder().encode(password).length > 72
+    ) {
+        return NextResponse.json(
+            { error: "Password must be at least 8 characters and at most 72 bytes." },
             { status: 400 }
         );
     }
 
     try {
-        const [users] = await db.execute<UserRow[]>(
-            `SELECT id, username, email, password_hash
-             FROM users
-             WHERE email = ?
-             LIMIT 1`,
-            [body.email.trim()]
+        const passwordHash = await bcrypt.hash(password, 12);
+
+        await db.execute(
+            `INSERT INTO users (email, username, password)
+             VALUES (?, ?, ?)`,
+            [email, username, passwordHash]
         );
 
-        const user = users[0];
-
+        return NextResponse.json(
+            { message: "Account created. You can now sign in." },
+            { status: 201 }
+        );
+    } catch (error) {
         if (
-            !user ||
-            !(await bcrypt.compare(body.password, user.password_hash))
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "ER_DUP_ENTRY"
         ) {
             return NextResponse.json(
-                { error: "Invalid email or password." },
-                { status: 401 }
+                { error: "Email or username is already in use." },
+                { status: 409 }
             );
         }
 
-        return NextResponse.json({
-            message: "Credentials verified.",
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-            },
-        });
-    } catch (error) {
-        console.error("Sign-in failed:", error);
+        console.error("Registration failed:", error);
 
         return NextResponse.json(
-            { error: "Could not sign in." },
+            { error: "Could not create account." },
             { status: 500 }
         );
     }

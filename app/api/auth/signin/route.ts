@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import type { RowDataPacket } from "mysql2";
 import { db } from "@/lib/server/database";
+import { createSession, SESSION_COOKIE, SESSION_SECONDS, sessionCookieOptions } from "@/lib/server/session";
 
 interface UserRow extends RowDataPacket {
     id: number;
     username: string;
     email: string;
-    password_hash: string;
+    password: string;
 }
 
 export async function POST(request: Request) {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
     try {
         const [users] = await db.execute<UserRow[]>(
-            `SELECT id, username, email, password_hash
+            `SELECT id, username, email, password
              FROM users
              WHERE email = ?
              LIMIT 1`,
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
         if (
             !user ||
-            !(await bcrypt.compare(body.password, user.password_hash))
+            !(await bcrypt.compare(body.password, user.password))
         ) {
             return NextResponse.json(
                 { error: "Invalid email or password." },
@@ -59,14 +60,25 @@ export async function POST(request: Request) {
             );
         }
 
-        return NextResponse.json({
-            message: "Credentials verified.",
+        const token = await createSession(user.id);
+
+        const response = NextResponse.json({
+            message: "Signed in successfully.",
             user: {
                 id: user.id,
                 username: user.username,
                 email: user.email,
             },
         });
+
+        response.headers.set("Cache-Control", "no-store");
+
+        response.cookies.set(SESSION_COOKIE, token, {
+            ...sessionCookieOptions,
+            maxAge: SESSION_SECONDS,
+        });
+
+        return response;
     } catch (error) {
         console.error("Sign-in failed:", error);
 
