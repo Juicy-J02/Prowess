@@ -1090,13 +1090,6 @@ export default function TransactionForm({ collections }: Props) {
                     {busy ? "Saving…" : "Save Transaction"}
                 </button>
             </fieldset>
-
-            <Link
-                href="/collection"
-                className="mt-6 inline-block underline"
-            >
-                View collections
-            </Link>
         </form>
     );
 }
