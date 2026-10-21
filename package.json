@@ -11,7 +11,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "mysql2": "^3.24.6",
-    "next": "16.4.1",
+    "next": "^16.4.1",
     "papaparse": "^5.7.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
