@@ -1,4 +1,5 @@
 import mysql from "mysql2/promise";
+import "server-only";
 
 const globalForDB = globalThis as unknown as {
   mysqlPool?: mysql.Pool;

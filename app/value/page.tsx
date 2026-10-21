@@ -1,9 +1,9 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
+
 import AutoRecordSnapshot from "@/components/AutoRecordSnapshot";
 import { db } from "@/lib/server/database";
 import {
@@ -30,7 +30,11 @@ interface TransactionRow extends RowDataPacket {
     currency: string;
     amount_cents: number | string;
     occurred_at_sql: string;
-    copy_count?: string | number;
+}
+
+interface CollectionRow extends RowDataPacket {
+    id: number;
+    name: string;
 }
 
 interface Pricing {
@@ -49,10 +53,18 @@ interface SnapshotRow extends RowDataPacket {
     price_cents: string | number;
 }
 
+interface CollectionSnapshotRow extends RowDataPacket {
+    day: string;
+    cents: string | number | null;
+    covered: string | number;
+    variant_count: string | number;
+}
+
 interface HistoryPoint {
     day: string;
     cents: number | null;
     covered: number;
+    variantCount?: number;
 }
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -113,7 +125,8 @@ async function loadBasket(
                 SUM(cc.quantity) AS quantity
              FROM collection_cards cc
              JOIN collections c ON c.id = cc.collection_id
-             WHERE c.user_id = ? AND cc.quantity > 0
+             WHERE c.user_id = ?
+               AND cc.quantity > 0
              GROUP BY cc.scryfall_id, cc.finish`,
             [userId]
         );
@@ -137,7 +150,8 @@ async function loadBasket(
                     '%Y-%m-%d %H:%i:%s'
                 ) AS occurred_at_sql
              FROM transactions
-             WHERE id = ? AND user_id = ?`,
+             WHERE id = ?
+               AND user_id = ?`,
             [selectedId, userId]
         );
 
@@ -155,7 +169,8 @@ async function loadBasket(
             SUM(ti.quantity) AS quantity
          FROM transaction_items ti
          JOIN transactions t ON t.id = ti.transaction_id
-         WHERE t.id = ? AND t.user_id = ?
+         WHERE t.id = ?
+           AND t.user_id = ?
          GROUP BY ti.scryfall_id, ti.finish`,
         [selectedId, userId]
     );
@@ -163,6 +178,46 @@ async function loadBasket(
     return {
         cards,
         transaction: transactions[0],
+    };
+}
+
+async function loadCollectionBasket(
+    userId: number,
+    collectionId: string
+) {
+    if (collectionId === "all") {
+        return loadBasket(userId, "all");
+    }
+
+    const [owned] = await db.execute<CollectionRow[]>(
+        `SELECT id, name
+         FROM collections
+         WHERE id = ?
+           AND user_id = ?`,
+        [collectionId, userId]
+    );
+
+    if (!owned.length) {
+        notFound();
+    }
+
+    const [cards] = await db.execute<BasketCard[]>(
+        `SELECT
+            cc.scryfall_id,
+            cc.finish,
+            SUM(cc.quantity) AS quantity
+         FROM collection_cards cc
+         JOIN collections c ON c.id = cc.collection_id
+         WHERE c.id = ?
+           AND c.user_id = ?
+           AND cc.quantity > 0
+         GROUP BY cc.scryfall_id, cc.finish`,
+        [collectionId, userId]
+    );
+
+    return {
+        cards,
+        transaction: null as TransactionRow | null,
     };
 }
 
@@ -179,7 +234,11 @@ function unitCents(
                 ? pricing?.prices.usd
                 : null;
 
-    if (raw === null || raw === undefined || raw === "") {
+    if (
+        raw === null ||
+        raw === undefined ||
+        raw === ""
+    ) {
         return null;
     }
 
@@ -194,7 +253,9 @@ async function loadPrices(cards: BasketCard[]) {
     const prices = new Map<string, Pricing | null>();
 
     for (const card of cards) {
-        if (prices.has(card.scryfall_id)) continue;
+        if (prices.has(card.scryfall_id)) {
+            continue;
+        }
 
         await new Promise((resolve) =>
             setTimeout(resolve, 550)
@@ -235,11 +296,103 @@ async function loadPrices(cards: BasketCard[]) {
     return prices;
 }
 
+async function recordCollectionSnapshot(
+    userId: number,
+    collectionId: string,
+    cards: BasketCard[],
+    prices: Map<string, Pricing | null>
+) {
+    // The caller authenticates the user and verifies ownership.
+    // Reuse the prices already loaded for this visit.
+    let cents = 0;
+    let covered = 0;
+
+    for (const card of cards) {
+        const price = unitCents(
+            prices.get(card.scryfall_id),
+            card.finish
+        );
+
+        if (price !== null) {
+            covered++;
+            cents += price * Number(card.quantity);
+        }
+    }
+
+    // scope_id = 0 represents all collections combined.
+    // Repeat visits update today's observation.
+    // Previous dates remain unchanged.
+    // Incomplete observations have a null total.
+    await db.execute(
+        `INSERT INTO collection_value_snapshots (
+            user_id,
+            scope_id,
+            snapshot_day,
+            value_cents,
+            variant_count,
+            covered
+         )
+         VALUES (?, ?, UTC_DATE(), ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            value_cents = VALUES(value_cents),
+            variant_count = VALUES(variant_count),
+            covered = VALUES(covered)`,
+        [
+            userId,
+            collectionId === "all" ? "0" : collectionId,
+            covered === cards.length ? cents : null,
+            cards.length,
+            covered,
+        ]
+    );
+}
+
+async function loadCollectionHistory(
+    userId: number,
+    collectionId: string
+): Promise<HistoryPoint[]> {
+    const [rows] =
+        await db.execute<CollectionSnapshotRow[]>(
+            `SELECT
+                DATE_FORMAT(
+                    snapshot_day,
+                    '%Y-%m-%d'
+                ) AS day,
+                value_cents AS cents,
+                covered,
+                variant_count
+             FROM collection_value_snapshots
+             WHERE user_id = ?
+               AND scope_id = ?
+               AND snapshot_day >=
+                   UTC_DATE() - INTERVAL 90 DAY
+               AND snapshot_day <= UTC_DATE()
+             ORDER BY snapshot_day`,
+            [
+                userId,
+                collectionId === "all" ? "0" : collectionId,
+            ]
+        );
+
+    return rows.map((row) => ({
+        day: row.day,
+        cents:
+            row.cents === null
+                ? null
+                : Number(row.cents),
+        covered: Number(row.covered),
+        variantCount: Number(row.variant_count),
+    }));
+}
+
 function buildHistory(
     cards: BasketCard[],
     rows: SnapshotRow[]
 ): HistoryPoint[] {
-    const days = new Map<string, Map<string, number>>();
+    const days = new Map<
+        string,
+        Map<string, number>
+    >();
 
     for (const row of rows) {
         const prices =
@@ -288,11 +441,16 @@ function buildHistory(
 async function loadHistory(
     cards: BasketCard[],
     since: string
-) {
-    if (!cards.length) return [];
+): Promise<HistoryPoint[]> {
+    if (!cards.length) {
+        return [];
+    }
 
     const conditions = cards
-        .map(() => "(s.scryfall_id = ? AND s.finish = ?)")
+        .map(
+            () =>
+                "(s.scryfall_id = ? AND s.finish = ?)"
+        )
         .join(" OR ");
 
     const variants = cards.flatMap((card) => [
@@ -304,7 +462,10 @@ async function loadHistory(
         `SELECT
             s.scryfall_id,
             s.finish,
-            DATE_FORMAT(s.recorded_at, '%Y-%m-%d') AS day,
+            DATE_FORMAT(
+                s.recorded_at,
+                '%Y-%m-%d'
+            ) AS day,
             s.price * 100 AS price_cents
          FROM card_price_snapshots s
          WHERE s.currency = 'USD'
@@ -338,7 +499,9 @@ function signedPercent(
     change: number,
     baseline: number
 ) {
-    if (baseline <= 0) return "—";
+    if (baseline <= 0) {
+        return "—";
+    }
 
     const percent = (change / baseline) * 100;
 
@@ -373,7 +536,7 @@ function Metric({
 
 function chartGeometry(
     history: HistoryPoint[],
-    baseline: number
+    baseline: number | null
 ) {
     const points = history.filter(
         (
@@ -382,7 +545,9 @@ function chartGeometry(
             point.cents !== null
     );
 
-    if (!points.length) return null;
+    if (!points.length) {
+        return null;
+    }
 
     const width = 760;
     const height = 300;
@@ -399,12 +564,12 @@ function chartGeometry(
     const end = Math.max(...times);
 
     const low = Math.min(
-        baseline,
+        ...(baseline === null ? [] : [baseline]),
         ...points.map((point) => point.cents)
     );
 
     const high = Math.max(
-        baseline,
+        ...(baseline === null ? [] : [baseline]),
         ...points.map((point) => point.cents)
     );
 
@@ -473,8 +638,8 @@ function HistoryGraph({
     type,
 }: {
     history: HistoryPoint[];
-    baseline: number;
-    type: "purchase" | "sale";
+    baseline: number | null;
+    type: "purchase" | "sale" | "collection";
 }) {
     const chart = chartGeometry(history, baseline);
 
@@ -482,8 +647,10 @@ function HistoryGraph({
         return (
             <p>
                 No complete daily snapshots to graph yet.
-                Available prices are recorded automatically.
-                Every card needs a price for a complete point.
+                {type === "collection"
+                    ? " Collection snapshots are recorded automatically when you view this page."
+                    : " Available transaction prices are recorded automatically."}
+                {" "}Every card needs a price for a complete point.
             </p>
         );
     }
@@ -495,9 +662,11 @@ function HistoryGraph({
     const enoughHistory = chart.points.length >= 2;
 
     const comparison =
-        type === "purchase"
-            ? last.cents - baseline
-            : baseline - last.cents;
+        baseline === null
+            ? change
+            : type === "purchase"
+              ? last.cents - baseline
+              : baseline - last.cents;
 
     const stroke =
         comparison > 0
@@ -522,7 +691,11 @@ function HistoryGraph({
                 />
 
                 <Metric
-                    title="Market value change over shown history"
+                    title={
+                        type === "collection"
+                            ? "Collection value change over shown history"
+                            : "Market value change over shown history"
+                    }
                     value={
                         enoughHistory
                             ? `${signedMoney(change)} (${signedPercent(
@@ -540,16 +713,24 @@ function HistoryGraph({
                     viewBox={`0 0 ${chart.width} ${chart.height}`}
                     className="h-auto min-w-[540px] w-full"
                     role="img"
-                    aria-label={`Recorded transaction value from ${first.day} to ${last.day}`}
+                    aria-label={`Recorded ${
+                        type === "collection"
+                            ? "collection"
+                            : "transaction"
+                    } value from ${first.day} to ${last.day}`}
                 >
                     <title>
-                        Transaction reference value over time
+                        {type === "collection"
+                            ? "Collection"
+                            : "Transaction"}{" "}
+                        reference value over time
                     </title>
 
                     <desc>
                         Dots show complete recorded daily values.
-                        The dashed line shows the transaction total.
-                        Incomplete dates break the line.
+                        A dashed line, when present, shows the
+                        transaction total. Incomplete dates break
+                        the line.
                     </desc>
 
                     {ticks.map((tick, index) => (
@@ -575,14 +756,16 @@ function HistoryGraph({
                         </g>
                     ))}
 
-                    <line
-                        x1={chart.left}
-                        x2={chart.width - chart.right}
-                        y1={chart.y(baseline)}
-                        y2={chart.y(baseline)}
-                        stroke="#64748b"
-                        strokeDasharray="6 5"
-                    />
+                    {baseline !== null && (
+                        <line
+                            x1={chart.left}
+                            x2={chart.width - chart.right}
+                            y1={chart.y(baseline)}
+                            y2={chart.y(baseline)}
+                            stroke="#64748b"
+                            strokeDasharray="6 5"
+                        />
+                    )}
 
                     {chart.segments.map((segment, index) => (
                         <polyline
@@ -603,7 +786,9 @@ function HistoryGraph({
                             r="4"
                             fill={stroke}
                         >
-                            <title>{`${point.day}: ${money(point.cents)}`}</title>
+                            <title>
+                                {`${point.day}: ${money(point.cents)}`}
+                            </title>
                         </circle>
                     ))}
 
@@ -641,22 +826,51 @@ function HistoryGraph({
             </div>
 
             <p className="text-sm text-zinc-500">
-                Solid line: recorded basket value. Dashed line:{" "}
-                {type === "purchase"
-                    ? "purchase cost"
-                    : "sale proceeds"}{" "}
-                ({money(baseline)}). Hover over a point for
-                its date and value. The change compares{" "}
-                {first.day} with {last.day}; it is not realized profit.
+                Solid line: recorded value.{" "}
+                {baseline !== null && (
+                    <>
+                        Dashed line:{" "}
+                        {type === "purchase"
+                            ? "purchase cost"
+                            : "sale proceeds"}{" "}
+                        ({money(baseline)}).{" "}
+                    </>
+                )}
+                Hover over a point for its date and value.
+                The change compares {first.day} with{" "}
+                {last.day}; it is not realized profit.
             </p>
 
             {!enoughHistory && (
                 <p className="text-sm text-zinc-500">
                     You have one complete snapshot date.
-                    Visit this transaction on another day to show a trend.
+                    Visit again on a different day to show a trend.
                 </p>
             )}
         </div>
+    );
+}
+
+async function selectValueView(formData: FormData) {
+    "use server";
+
+    const view = formData.get("view");
+
+    if (typeof view !== "string") {
+        notFound();
+    }
+
+    const match =
+        /^(collection|transaction):(all|[1-9]\d{0,19})$/.exec(
+            view
+        );
+
+    if (!match) {
+        notFound();
+    }
+
+    redirect(
+        `/value?${match[1]}=${encodeURIComponent(match[2])}`
     );
 }
 
@@ -671,7 +885,9 @@ export default function ValuePage({
 
             <Suspense
                 fallback={
-                    <p className="mt-6">Loading value…</p>
+                    <p className="mt-6">
+                        Loading value…
+                    </p>
                 }
             >
                 <UserValue searchParams={searchParams} />
@@ -688,7 +904,47 @@ async function UserValue({
     const user = await requireUser();
     const params = await searchParams;
 
+    if (
+        params.collection !== undefined &&
+        params.transaction !== undefined
+    ) {
+        notFound();
+    }
+
+    const collectionMode =
+        params.collection !== undefined ||
+        params.transaction === undefined;
+
+    const selectedCollection = selection(params.collection);
     const selectedId = selection(params.transaction);
+
+    const selectedValue = collectionMode
+        ? `collection:${selectedCollection}`
+        : `transaction:${selectedId}`;
+
+    const [collections] =
+        await db.execute<CollectionRow[]>(
+            `SELECT id, name
+             FROM collections
+             WHERE user_id = ?
+             ORDER BY name, id`,
+            [user.id]
+        );
+
+    const collectionName =
+        selectedCollection === "all"
+            ? "All collections"
+            : collections.find(
+                  (collection) =>
+                      String(collection.id) === selectedCollection
+              )?.name;
+
+    if (
+        collectionMode &&
+        collectionName === undefined
+    ) {
+        notFound();
+    }
 
     const [options] =
         await db.execute<TransactionRow[]>(
@@ -703,15 +959,21 @@ async function UserValue({
                     '%Y-%m-%d %H:%i:%s'
                 ) AS occurred_at_sql
              FROM transactions
-             WHERE user_id = ? AND currency = 'USD'
+             WHERE user_id = ?
+               AND currency = 'USD'
              ORDER BY occurred_at DESC, id DESC`,
             [user.id]
         );
 
-    const { cards, transaction } = await loadBasket(
-        user.id,
-        selectedId
-    );
+    const { cards, transaction } = collectionMode
+        ? await loadCollectionBasket(
+              user.id,
+              selectedCollection
+          )
+        : await loadBasket(
+              user.id,
+              selectedId
+          );
 
     const prices = await loadPrices(cards);
 
@@ -755,16 +1017,24 @@ async function UserValue({
     const complete = cards.length > 0 && missing === 0;
 
     const paid = options
-        .filter((t) => t.type === "purchase")
+        .filter(
+            (transaction) =>
+                transaction.type === "purchase"
+        )
         .reduce(
-            (sum, t) => sum + Number(t.amount_cents),
+            (sum, transaction) =>
+                sum + Number(transaction.amount_cents),
             0
         );
 
     const received = options
-        .filter((t) => t.type === "sale")
+        .filter(
+            (transaction) =>
+                transaction.type === "sale"
+        )
         .reduce(
-            (sum, t) => sum + Number(t.amount_cents),
+            (sum, transaction) =>
+                sum + Number(transaction.amount_cents),
             0
         );
 
@@ -777,44 +1047,102 @@ async function UserValue({
             ? baseline - currentCents
             : currentCents - baseline;
 
-    const history = transaction
+    let snapshotError = false;
+
+    if (collectionMode) {
+        try {
+            await recordCollectionSnapshot(
+                user.id,
+                selectedCollection,
+                cards,
+                prices
+            );
+        } catch (error) {
+            console.error(
+                "Automatic collection snapshot failed:",
+                error
+            );
+
+            snapshotError = true;
+        }
+    }
+
+    // Load history after saving so today's snapshot
+    // appears on the graph immediately.
+    const history: HistoryPoint[] = transaction
         ? await loadHistory(
               cards,
               transaction.occurred_at_sql
           )
-        : [];
+        : collectionMode
+          ? await loadCollectionHistory(
+                user.id,
+                selectedCollection
+            )
+          : [];
+
+    const firstCompleteValue =
+        history.find(
+            (point) => point.cents !== null
+        )?.cents ?? null;
 
     const checkedAt = new Date().toISOString();
 
     return (
         <div className="mt-6 space-y-6">
             <form
-                action="/value"
-                method="GET"
+                action={selectValueView}
                 className="flex flex-wrap items-end gap-4"
             >
                 <label className="flex flex-1 flex-col gap-2">
                     View value for
 
                     <select
-                        name="transaction"
-                        defaultValue={selectedId}
-                        key={selectedId}
+                        name="view"
+                        defaultValue={selectedValue}
+                        key={selectedValue}
                         className={selectClass}
                     >
-                        <option value="all">
-                            All transactions
-                        </option>
-
-                        {options.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                {t.name} — {t.type}
-                                {" — "}
-                                {t.occurred_at_sql.slice(0, 10)}
-                                {" — "}
-                                {money(Number(t.amount_cents))}
+                        <optgroup label="Collections">
+                            <option value="collection:all">
+                                All collections
                             </option>
-                        ))}
+
+                            {collections.map((collection) => (
+                                <option
+                                    key={collection.id}
+                                    value={`collection:${collection.id}`}
+                                >
+                                    {collection.name}
+                                </option>
+                            ))}
+                        </optgroup>
+
+                        <optgroup label="Transactions">
+                            <option value="transaction:all">
+                                Account overview
+                            </option>
+
+                            {options.map((transaction) => (
+                                <option
+                                    key={transaction.id}
+                                    value={`transaction:${transaction.id}`}
+                                >
+                                    {transaction.name}
+                                    {" — "}
+                                    {transaction.type}
+                                    {" — "}
+                                    {transaction.occurred_at_sql.slice(
+                                        0,
+                                        10
+                                    )}
+                                    {" — "}
+                                    {money(
+                                        Number(transaction.amount_cents)
+                                    )}
+                                </option>
+                            ))}
+                        </optgroup>
                     </select>
                 </label>
 
@@ -867,14 +1195,19 @@ async function UserValue({
                                     ? signedMoney(difference)
                                     : "Unavailable"
                             }
-                            change={complete ? difference : null}
+                            change={
+                                complete ? difference : null
+                            }
                         />
 
                         <Metric
                             title="Percentage difference"
                             value={
                                 complete
-                                    ? signedPercent(difference, baseline)
+                                    ? signedPercent(
+                                          difference,
+                                          baseline
+                                      )
                                     : "—"
                             }
                             change={
@@ -899,6 +1232,50 @@ async function UserValue({
                         {transaction.type === "purchase"
                             ? "This compares the original purchased basket with today's market. It is not realized profit or remaining inventory value."
                             : "This compares sale proceeds with today's reference value of the sold basket. It is not sale profit, which requires acquisition costs."}
+                    </p>
+                </>
+            ) : collectionMode ? (
+                <>
+                    <h2 className="text-xl font-semibold">
+                        {collectionName}
+                    </h2>
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <Metric
+                            title={
+                                missing > 0
+                                    ? "Priced portion (incomplete)"
+                                    : "Current collection value"
+                            }
+                            value={money(currentCents)}
+                        />
+
+                        <Metric
+                            title="Owned copies"
+                            value={String(quantity)}
+                        />
+
+                        <Metric
+                            title="Copies without a price"
+                            value={String(missing)}
+                        />
+                    </div>
+
+                    <p
+                        role={
+                            snapshotError
+                                ? "status"
+                                : undefined
+                        }
+                        className={
+                            snapshotError
+                                ? "text-sm text-amber-600"
+                                : "text-sm text-zinc-500"
+                        }
+                    >
+                        {snapshotError
+                            ? "Today's collection snapshot could not be saved. Reload the page to try again."
+                            : "Today's collection snapshot was saved automatically. Repeat visits update today's snapshot (UTC)."}
                     </p>
                 </>
             ) : (
@@ -950,8 +1327,8 @@ async function UserValue({
                     <p className="text-sm text-amber-600">
                         Collection value + sales − purchases.
                         This is not confirmed profit: imported
-                        inventory may have unknown acquisition costs,
-                        and unpriced cards are excluded.
+                        inventory may have unknown acquisition
+                        costs, and unpriced cards are excluded.
                         Only USD transactions are included.
                     </p>
                 </>
@@ -961,7 +1338,10 @@ async function UserValue({
                 USD reference prices match printing and finish;
                 condition and language are not adjusted.
                 Lookup completed:{" "}
-                <time dateTime={checkedAt}>{checkedAt}</time>.
+                <time dateTime={checkedAt}>
+                    {checkedAt}
+                </time>
+                .
             </p>
 
             {transaction && (
@@ -971,30 +1351,37 @@ async function UserValue({
                 />
             )}
 
-            {transaction && (
+            {(transaction || collectionMode) && (
                 <section className="space-y-3 rounded-xl border p-5">
                     <h2 className="text-xl font-semibold">
-                        Transaction value over time
+                        {transaction
+                            ? "Transaction"
+                            : "Collection"}{" "}
+                        value over time
                     </h2>
 
                     <p className="text-sm text-zinc-500">
-                        Last 90 days of recorded prices on or after
-                        the transaction date (UTC). These are daily
-                        observations, not exact purchase-time quotes.
-                        Missing prices are not treated as zero.
+                        {transaction
+                            ? "Last 90 days of recorded prices on or after the transaction date (UTC). These are daily observations, not exact purchase-time quotes."
+                            : "Last 90 days of saved collection totals (UTC). Each snapshot uses the quantities held when recorded. Changes include additions, removals, and market movement; they are not investment returns."}
+                        {" "}Missing prices are not treated as zero.
                     </p>
 
                     <HistoryGraph
                         history={history}
-                        baseline={baseline}
-                        type={transaction.type}
+                        baseline={
+                            transaction ? baseline : null
+                        }
+                        type={
+                            transaction?.type ?? "collection"
+                        }
                     />
 
                     {!history.length ? (
                         <p>
-                            No snapshots yet. Available prices are
-                            recorded automatically on this visit.
-                            Earlier prices cannot be reconstructed.
+                            {transaction
+                                ? "No snapshots yet. Available prices are recorded automatically on this visit."
+                                : "No saved snapshots yet. Collection snapshots are recorded automatically when you view this page."}
                         </p>
                     ) : (
                         <div className="overflow-x-auto">
@@ -1004,12 +1391,17 @@ async function UserValue({
                                         <th className="p-3">
                                             Date (UTC)
                                         </th>
+
                                         <th className="p-3">
                                             Reference value
                                         </th>
+
                                         <th className="p-3">
-                                            Comparison
+                                            {transaction
+                                                ? "Comparison"
+                                                : "Change since first complete snapshot"}
                                         </th>
+
                                         <th className="p-3">
                                             Coverage
                                         </th>
@@ -1018,12 +1410,26 @@ async function UserValue({
 
                                 <tbody>
                                     {history.map((point) => {
-                                        const comparison =
-                                            point.cents === null
-                                                ? null
-                                                : transaction.type === "sale"
-                                                  ? baseline - point.cents
-                                                  : point.cents - baseline;
+                                        let comparison: number | null =
+                                            null;
+
+                                        if (point.cents !== null) {
+                                            if (transaction) {
+                                                comparison =
+                                                    transaction.type ===
+                                                    "sale"
+                                                        ? baseline -
+                                                          point.cents
+                                                        : point.cents -
+                                                          baseline;
+                                            } else if (
+                                                firstCompleteValue !== null
+                                            ) {
+                                                comparison =
+                                                    point.cents -
+                                                    firstCompleteValue;
+                                            }
+                                        }
 
                                         return (
                                             <tr
@@ -1054,8 +1460,10 @@ async function UserValue({
 
                                                 <td className="p-3">
                                                     {point.covered}/
-                                                    {cards.length}
-                                                    {" "}printing/finish variants
+                                                    {point.variantCount ??
+                                                        cards.length}
+                                                    {" "}
+                                                    printing/finish variants
                                                 </td>
                                             </tr>
                                         );
@@ -1067,11 +1475,11 @@ async function UserValue({
                 </section>
             )}
 
-            {!transaction && (
+            {!transaction && !collectionMode && (
                 <p className="text-sm text-zinc-500">
-                    Select a transaction for its fixed-basket history.
-                    Current collection quantities change over time,
-                    so they are not used to reconstruct past account values.
+                    Select a transaction for its fixed-basket
+                    history, or select a collection to track
+                    its total value automatically over time.
                 </p>
             )}
 
@@ -1089,11 +1497,21 @@ async function UserValue({
                         <table className="w-full text-left text-sm">
                             <thead>
                                 <tr>
-                                    <th className="p-3">Card</th>
-                                    <th className="p-3">Finish</th>
-                                    <th className="p-3">Quantity</th>
-                                    <th className="p-3">Unit price</th>
-                                    <th className="p-3">Total</th>
+                                    <th className="p-3">
+                                        Card
+                                    </th>
+                                    <th className="p-3">
+                                        Finish
+                                    </th>
+                                    <th className="p-3">
+                                        Quantity
+                                    </th>
+                                    <th className="p-3">
+                                        Unit price
+                                    </th>
+                                    <th className="p-3">
+                                        Total
+                                    </th>
                                 </tr>
                             </thead>
 
