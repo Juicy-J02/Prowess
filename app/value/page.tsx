@@ -660,13 +660,19 @@ function HistoryGraph({
                             />
 
                             <text
-                                x={chart.left - 10}
-                                y={chart.y(tick) + 4}
-                                textAnchor="end"
+                                x={
+                                    chart.start === chart.end
+                                        ? chart.x(history[0].day)
+                                        : chart.left
+                                }
+                                y={chart.height - 16}
+                                textAnchor={
+                                    chart.start === chart.end ? "middle" : "start"
+                                }
                                 fill="currentColor"
-                                fontSize="11"
+                                fontSize="12"
                             >
-                                {money(tick)}
+                                {history[0].day}
                             </text>
                         </g>
                     ))}
