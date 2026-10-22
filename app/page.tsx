@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import type { RowDataPacket } from "mysql2";
+import { loadScryfallPrices } from "@/lib/server/scryfallPrices";
 
 import { db } from "@/lib/server/database";
 import {
@@ -74,6 +75,106 @@ function StatCard({
             <p className="mt-3 text-3xl font-semibold">
                 {value}
             </p>
+        </Link>
+    );
+}
+
+interface AccountCard extends RowDataPacket {
+    scryfall_id: string;
+    finish: string;
+    quantity: number | string;
+}
+
+async function AccountValue({ userId }: { userId: number }) {
+    const [cards] = await db.execute<AccountCard[]>(
+        `SELECT
+            cc.scryfall_id,
+            cc.finish,
+            SUM(cc.quantity) AS quantity
+         FROM collection_cards cc
+         JOIN collections c ON c.id = cc.collection_id
+         WHERE c.user_id = ?
+           AND cc.quantity > 0
+         GROUP BY cc.scryfall_id, cc.finish`,
+        [userId]
+    );
+
+    const prices = await loadScryfallPrices(cards);
+
+    let totalCents = 0;
+    let unpricedCopies = 0;
+
+    for (const card of cards) {
+        const pricing = prices.get(card.scryfall_id);
+
+        const raw =
+            card.finish === "foil"
+                ? pricing?.prices.usd_foil
+                : card.finish === "etched"
+                    ? pricing?.prices.usd_etched
+                    : card.finish === "nonfoil"
+                        ? pricing?.prices.usd
+                        : null;
+
+        const amount =
+            raw === null || raw === undefined || raw === ""
+                ? NaN
+                : Number(raw);
+
+        if (!Number.isFinite(amount) || amount < 0) {
+            unpricedCopies += Number(card.quantity);
+            continue;
+        }
+
+        totalCents +=
+            Math.round(amount * 100) * Number(card.quantity);
+    }
+
+    return (
+        <Link
+            href="/value?collection=all"
+            className={`block rounded-2xl border p-8 transition-colors ${totalCents > 0
+                ? "border-green-300 bg-green-50 hover:bg-green-100 dark:border-green-800 dark:bg-green-950/30 dark:hover:bg-green-950/50"
+                : totalCents < 0
+                    ? "border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50"
+                    : "border-zinc-300 bg-zinc-50 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                }`}
+        >
+            <h2 className="text-lg font-medium text-zinc-600 dark:text-zinc-300">
+                Total Account Value
+            </h2>
+
+            <p
+                className={`mt-3 text-4xl font-bold tracking-tight sm:text-5xl ${totalCents > 0
+                    ? "text-green-600 dark:text-green-400"
+                    : totalCents < 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-zinc-600 dark:text-zinc-400"
+                    }`}
+            >
+                {usd(totalCents)}
+            </p>
+
+            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                Current USD reference value across all your collections.
+                {unpricedCopies > 0 && (
+                    <>
+                        {" "}{unpricedCopies} card copies without prices
+                        are excluded.
+                    </>
+                )}
+            </p>
+
+            <span
+                className={`mt-5 inline-block text-sm font-medium ${totalCents > 0
+                        ? "text-green-700 dark:text-green-400"
+                        : totalCents < 0
+                            ? "text-red-700 dark:text-red-400"
+                            : "text-zinc-700 dark:text-zinc-400"
+                    }`}
+            >
+                View value history →
+            </span>
         </Link>
     );
 }
@@ -248,6 +349,24 @@ async function HomeContent() {
                     href="/transactions?type=sale"
                 />
             </section>
+
+            <Suspense
+                fallback={
+                    <div
+                        role="status"
+                        className="rounded-2xl border border-blue-200 bg-blue-50 p-8 dark:border-blue-900 dark:bg-blue-950/30"
+                    >
+                        <h2 className="text-lg font-medium">
+                            Total Account Value
+                        </h2>
+                        <p className="mt-3 text-zinc-500">
+                            Loading account value…
+                        </p>
+                    </div>
+                }
+            >
+                <AccountValue userId={user.id} />
+            </Suspense>
 
             <p className="text-sm text-zinc-500">
                 Purchase and sale totals include {transactionCount}{" "}
