@@ -634,20 +634,21 @@ function HistoryGraph({
                     viewBox={`0 0 ${chart.width} ${chart.height}`}
                     className="h-auto min-w-[540px] w-full"
                     role="img"
-                    aria-label={`Recorded ${type === "collection"
-                        ? "collection"
-                        : "transaction"
+                    aria-label={`Recorded ${type === "collection" ? "collection" : "transaction"
                         } value from ${first.day} to ${last.day}`}
                 >
-                    <title>{`${type === "collection" ? "Collection" : "Transaction"} reference value over time`}</title>
+                    <title>
+                        {`${type === "collection" ? "Collection" : "Transaction"
+                            } reference value over time`}
+                    </title>
 
                     <desc>
                         Dots show complete recorded daily values.
-                        A dashed line, when present, shows the
-                        transaction total. Incomplete dates break
-                        the line.
+                        A dashed line, when present, shows the transaction total.
+                        Incomplete dates break the line.
                     </desc>
 
+                    {/* Horizontal grid lines and money labels */}
                     {ticks.map((tick, index) => (
                         <g key={index}>
                             <line
@@ -660,19 +661,13 @@ function HistoryGraph({
                             />
 
                             <text
-                                x={
-                                    chart.start === chart.end
-                                        ? chart.x(history[0].day)
-                                        : chart.left
-                                }
-                                y={chart.height - 16}
-                                textAnchor={
-                                    chart.start === chart.end ? "middle" : "start"
-                                }
+                                x={chart.left - 10}
+                                y={chart.y(tick) + 4}
+                                textAnchor="end"
                                 fill="currentColor"
-                                fontSize="12"
+                                fontSize="11"
                             >
-                                {history[0].day}
+                                {money(tick)}
                             </text>
                         </g>
                     ))}
@@ -713,18 +708,23 @@ function HistoryGraph({
                         </circle>
                     ))}
 
+                    {/* First date, centered when there is only one day */}
                     <text
-                        x={chart.left}
+                        x={chart.x(history[0].day)}
                         y={chart.height - 16}
+                        textAnchor={
+                            chart.start === chart.end ? "middle" : "start"
+                        }
                         fill="currentColor"
                         fontSize="12"
                     >
                         {history[0].day}
                     </text>
 
+                    {/* Last date, shown only when the dates differ */}
                     {chart.start !== chart.end && (
                         <text
-                            x={chart.width - chart.right}
+                            x={chart.x(history[history.length - 1].day)}
                             y={chart.height - 16}
                             textAnchor="end"
                             fill="currentColor"
@@ -735,7 +735,7 @@ function HistoryGraph({
                     )}
 
                     <text
-                        x={chart.width / 2}
+                        x={(chart.left + chart.width - chart.right) / 2}
                         y={chart.height - 2}
                         textAnchor="middle"
                         fill="currentColor"
