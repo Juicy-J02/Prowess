@@ -223,10 +223,10 @@ function unitCents(
         finish === "foil"
             ? pricing?.prices.usd_foil
             : finish === "etched"
-              ? pricing?.prices.usd_etched
-              : finish === "nonfoil"
-                ? pricing?.prices.usd
-                : null;
+                ? pricing?.prices.usd_etched
+                : finish === "nonfoil"
+                    ? pricing?.prices.usd
+                    : null;
 
     if (
         raw === null ||
@@ -283,7 +283,7 @@ async function recordCollectionSnapshot(
         [
             userId,
             collectionId === "all" ? "0" : collectionId,
-            covered === cards.length ? cents : null,
+            cents,
             cards.length,
             covered,
         ]
@@ -509,14 +509,14 @@ function chartGeometry(
         end === start
             ? (left + width - right) / 2
             : left +
-              ((Date.parse(`${day}T00:00:00Z`) - start) /
-                  (end - start)) *
-                  (width - left - right);
+            ((Date.parse(`${day}T00:00:00Z`) - start) /
+                (end - start)) *
+            (width - left - right);
 
     const y = (cents: number) =>
         top +
         ((maximum - cents) / (maximum - minimum)) *
-            (height - top - bottom);
+        (height - top - bottom);
 
     const segments: string[] = [];
     let active: string[] = [];
@@ -571,7 +571,6 @@ function HistoryGraph({
                 {type === "collection"
                     ? " Collection snapshots are recorded automatically when you view this page."
                     : " Available transaction prices are recorded automatically."}
-                {" "}Every card needs a price for a complete point.
             </p>
         );
     }
@@ -585,15 +584,15 @@ function HistoryGraph({
         baseline === null
             ? change
             : type === "purchase"
-              ? last.cents - baseline
-              : baseline - last.cents;
+                ? last.cents - baseline
+                : baseline - last.cents;
 
     const stroke =
         comparison > 0
             ? "#16a34a"
             : comparison < 0
-              ? "#dc2626"
-              : "#64748b";
+                ? "#dc2626"
+                : "#64748b";
 
     const ticks = Array.from(
         { length: 5 },
@@ -619,9 +618,9 @@ function HistoryGraph({
                     value={
                         enoughHistory
                             ? `${signedMoney(change)} (${signedPercent(
-                                  change,
-                                  first.cents
-                              )})`
+                                change,
+                                first.cents
+                            )})`
                             : "Need a second snapshot date"
                     }
                     change={enoughHistory ? change : null}
@@ -633,11 +632,10 @@ function HistoryGraph({
                     viewBox={`0 0 ${chart.width} ${chart.height}`}
                     className="h-auto min-w-[540px] w-full"
                     role="img"
-                    aria-label={`Recorded ${
-                        type === "collection"
+                    aria-label={`Recorded ${type === "collection"
                             ? "collection"
                             : "transaction"
-                    } value from ${first.day} to ${last.day}`}
+                        } value from ${first.day} to ${last.day}`}
                 >
                     <title>
                         {type === "collection"
@@ -850,9 +848,9 @@ async function UserValue({ searchParams }: Props) {
         selectedCollection === "all"
             ? "All collections"
             : collections.find(
-                  (collection) =>
-                      String(collection.id) === selectedCollection
-              )?.name;
+                (collection) =>
+                    String(collection.id) === selectedCollection
+            )?.name;
 
     if (collectionMode && collectionName === undefined) {
         notFound();
@@ -969,11 +967,11 @@ async function UserValue({ searchParams }: Props) {
     const history: HistoryPoint[] = transaction
         ? await loadHistory(cards, transaction.occurred_at_sql)
         : collectionMode
-          ? await loadCollectionHistory(
+            ? await loadCollectionHistory(
                 user.id,
                 selectedCollection
             )
-          : [];
+            : [];
 
     const firstCompleteValue =
         history.find((point) => point.cents !== null)?.cents ??
@@ -1240,9 +1238,8 @@ async function UserValue({ searchParams }: Props) {
 
                     <p className="text-sm text-zinc-500">
                         {transaction
-                            ? "Last 90 days of recorded prices on or after the transaction date (UTC). These are daily observations, not exact purchase-time quotes."
-                            : "Last 90 days of saved collection totals (UTC). Each snapshot uses the quantities held when recorded. Changes include additions, removals, and market movement; they are not investment returns."}
-                        {" "}Missing prices are not treated as zero.
+                            ? "Last 90 days of recorded prices on or after the transaction date (UTC). These are daily observations, not exact purchase-time quotes. Missing prices leave transaction totals incomplete."
+                            : "Shows the total for cards with available prices. Unpriced cards are excluded. Coverage shows how many printing/finish variants were priced. Changes in coverage can affect the total."}
                     </p>
 
                     <HistoryGraph
@@ -1398,9 +1395,9 @@ async function UserValue({ searchParams }: Props) {
                                             {card.cents === null
                                                 ? "—"
                                                 : money(
-                                                      card.cents *
-                                                          card.quantity
-                                                  )}
+                                                    card.cents *
+                                                    card.quantity
+                                                )}
                                         </td>
                                     </tr>
                                 ))}
