@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CardDetailsModal from "@/components/cardDetailsModal";
 
 interface CollectionCard {
     id: number;
@@ -18,6 +19,7 @@ interface CollectionCard {
 
 interface Props {
     cards: CollectionCard[];
+    collectionId: number;
 }
 
 const PAGE_SIZE = 24;
@@ -31,7 +33,8 @@ const labelClass =
 const buttonClass =
     "inline-flex items-center justify-center rounded-xl border border-accent/40 bg-surface px-4 py-2 text-sm font-semibold text-accent transition-colors enabled:hover:border-accent enabled:hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
 
-export default function CollectionCards({ cards }: Props) {
+export default function CollectionCards({ cards, collectionId }: Props) {
+    const [selectedCard, setSelectedCard] = useState<CollectionCard | null>(null);
     const [search, setSearch] = useState("");
     const [setCode, setSetCode] = useState("");
     const [condition, setCondition] = useState("");
@@ -175,6 +178,14 @@ export default function CollectionCards({ cards }: Props) {
 
     return (
         <div className="space-y-6 text-foreground">
+            {selectedCard && (
+                <CardDetailsModal
+                    key={selectedCard.id}
+                    card={cards.find((card) => card.id === selectedCard.id) ?? selectedCard}
+                    collectionId={collectionId}
+                    onClose={() => setSelectedCard(null)}
+                />
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted">
                     <span className="font-semibold text-foreground">
@@ -403,92 +414,98 @@ export default function CollectionCards({ cards }: Props) {
                                     key={card.id}
                                     className="min-w-0 overflow-hidden rounded-2xl border border-border bg-background/70 p-3 shadow-lg shadow-black/10 transition-colors hover:border-accent/60"
                                 >
-                                    <div className="relative mb-4">
-                                        {card.imageUrl ? (
-                                            <div className="relative isolate overflow-hidden rounded-xl">
-                                                <img
-                                                    src={card.imageUrl}
-                                                    alt={card.name}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    width={488}
-                                                    height={680}
-                                                    className="block h-auto w-full"
-                                                />
-
-                                                {isFoil && (
-                                                    <div
-                                                        aria-hidden="true"
-                                                        className="pointer-events-none absolute inset-0 z-10"
-                                                        style={{
-                                                            background:
-                                                                "linear-gradient(115deg, rgba(255,80,160,0.3), rgba(140,90,255,0.3), rgba(50,200,255,0.3), rgba(100,255,150,0.3), rgba(255,220,80,0.3))",
-                                                            mixBlendMode:
-                                                                "screen",
-                                                        }}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedCard(card)}
+                                        aria-label={`View price history and transactions for ${card.name}`}
+                                        className="block w-full border-0 bg-transparent p-0 text-left font-normal text-foreground hover:bg-transparent"
+                                    >
+                                        <div className="relative mb-4">
+                                            {card.imageUrl ? (
+                                                <div className="relative isolate overflow-hidden rounded-xl">
+                                                    <img
+                                                        src={card.imageUrl}
+                                                        alt={card.name}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        width={488}
+                                                        height={680}
+                                                        className="block h-auto w-full"
                                                     />
-                                                )}
 
-                                                {isEtched && (
-                                                    <div
-                                                        aria-hidden="true"
-                                                        className="pointer-events-none absolute inset-0 z-10"
-                                                        style={{
-                                                            background:
-                                                                "repeating-linear-gradient(125deg, rgba(240,220,160,0.4) 0px, rgba(240,220,160,0.4) 1px, transparent 1px, transparent 4px)",
-                                                            mixBlendMode:
-                                                                "screen",
-                                                        }}
-                                                    />
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="flex aspect-[488/680] items-center justify-center rounded-xl border border-border bg-surface p-4 text-center text-sm text-muted">
-                                                Image unavailable
-                                            </div>
-                                        )}
+                                                    {isFoil && (
+                                                        <div
+                                                            aria-hidden="true"
+                                                            className="pointer-events-none absolute inset-0 z-10"
+                                                            style={{
+                                                                background:
+                                                                    "linear-gradient(115deg, rgba(255,80,160,0.3), rgba(140,90,255,0.3), rgba(50,200,255,0.3), rgba(100,255,150,0.3), rgba(255,220,80,0.3))",
+                                                                mixBlendMode:
+                                                                    "screen",
+                                                            }}
+                                                        />
+                                                    )}
 
-                                        <span
-                                            aria-label={`${card.quantity} copies`}
-                                            className="absolute right-2 top-2 z-20 rounded-lg border border-accent/50 bg-background/95 px-2.5 py-1 text-sm font-bold tabular-nums text-accent shadow-lg"
-                                        >
-                                            {card.quantity}×
-                                        </span>
-                                    </div>
-
-                                    <div className="px-1 pb-1">
-                                        <h3 className="break-words text-base font-semibold leading-snug text-foreground">
-                                            {card.name}
-                                        </h3>
-
-                                        {card.setCode && (
-                                            <p className="mt-2 text-xs font-semibold tracking-wide text-accent">
-                                                {card.setCode.toUpperCase()}
-                                                {card.collectorNumber &&
-                                                    ` #${card.collectorNumber}`}
-                                            </p>
-                                        )}
-
-                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted">
-                                                {card.condition}
-                                            </span>
+                                                    {isEtched && (
+                                                        <div
+                                                            aria-hidden="true"
+                                                            className="pointer-events-none absolute inset-0 z-10"
+                                                            style={{
+                                                                background:
+                                                                    "repeating-linear-gradient(125deg, rgba(240,220,160,0.4) 0px, rgba(240,220,160,0.4) 1px, transparent 1px, transparent 4px)",
+                                                                mixBlendMode:
+                                                                    "screen",
+                                                            }}
+                                                        />
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="flex aspect-[488/680] items-center justify-center rounded-xl border border-border bg-surface p-4 text-center text-sm text-muted">
+                                                    Image unavailable
+                                                </div>
+                                            )}
 
                                             <span
-                                                className={`rounded-md border px-2 py-1 text-xs ${
-                                                    isFoil || isEtched
-                                                        ? "border-teal/30 bg-teal/10 text-teal"
-                                                        : "border-border bg-surface text-muted"
-                                                }`}
+                                                aria-label={`${card.quantity} copies`}
+                                                className="absolute right-2 top-2 z-20 rounded-lg border border-accent/50 bg-background/95 px-2.5 py-1 text-sm font-bold tabular-nums text-accent shadow-lg"
                                             >
-                                                {card.finish}
-                                            </span>
-
-                                            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs uppercase text-muted">
-                                                {card.language}
+                                                {card.quantity}×
                                             </span>
                                         </div>
-                                    </div>
+
+                                        <div className="px-1 pb-1">
+                                            <h3 className="break-words text-base font-semibold leading-snug text-foreground">
+                                                {card.name}
+                                            </h3>
+
+                                            {card.setCode && (
+                                                <p className="mt-2 text-xs font-semibold tracking-wide text-accent">
+                                                    {card.setCode.toUpperCase()}
+                                                    {card.collectorNumber &&
+                                                        ` #${card.collectorNumber}`}
+                                                </p>
+                                            )}
+
+                                            <div className="mt-3 flex flex-wrap gap-1.5">
+                                                <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted">
+                                                    {card.condition}
+                                                </span>
+
+                                                <span
+                                                    className={`rounded-md border px-2 py-1 text-xs ${isFoil || isEtched
+                                                            ? "border-teal/30 bg-teal/10 text-teal"
+                                                            : "border-border bg-surface text-muted"
+                                                        }`}
+                                                >
+                                                    {card.finish}
+                                                </span>
+
+                                                <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs uppercase text-muted">
+                                                    {card.language}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </button>
                                 </li>
                             );
                         })}

@@ -271,7 +271,10 @@ async function CollectionDetails({ params }: Props) {
                     </div>
                 )}
 
-                <CollectionCards cards={collectionCards} />
+                <CollectionCards
+                    cards={collectionCards}
+                    collectionId={collection.id}
+                />
             </section>
         </div>
     );
