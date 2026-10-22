@@ -13,6 +13,9 @@ interface OwnedCard extends RowDataPacket {
     card_condition: string;
     finish: string;
     language: string;
+    card_name: string | null;
+    set_code: string | null;
+    collector_number: string | null;
 }
 
 interface Props {
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest, { params }: Props) {
 
         const { id } = await params;
 
-        if (!/^[1-9]\d*$/.test(id)) {
+        if (!/^[1-9]\d{0,19}$/.test(id)) {
             return NextResponse.json(
                 { error: "Invalid collection ID." },
                 { status: 400 }
@@ -42,7 +45,9 @@ export async function GET(request: NextRequest, { params }: Props) {
         }
 
         const [collections] = await db.execute<RowDataPacket[]>(
-            "SELECT id FROM collections WHERE id = ? AND user_id = ?",
+            `SELECT id
+             FROM collections
+             WHERE id = ? AND user_id = ?`,
             [id, user.id]
         );
 
@@ -55,97 +60,38 @@ export async function GET(request: NextRequest, { params }: Props) {
 
         const [rows] = await db.execute<OwnedCard[]>(
             `SELECT id, scryfall_id, quantity,
-                    card_condition, finish, language
+                    card_condition, finish, language,
+                    card_name, set_code, collector_number
              FROM collection_cards
              WHERE collection_id = ? AND quantity > 0
              ORDER BY id`,
             [id]
         );
 
-        // Default to the ID if card details are unavailable.
-        const ids = [...new Set(rows.map((card) => card.scryfall_id))];
-
-        const names = new Map<string, string>(
-            ids.map((id) => [id, id])
-        );
-
-        interface ScryfallCardDetails {
-            id: string;
-            name: string;
-            set: string;
-            collector_number: string;
-        }
-
-        interface ScryfallCollectionResponse {
-            data: ScryfallCardDetails[];
-        }
-
-        const BATCH_SIZE = 75;
-
-        for (let offset = 0; offset < ids.length; offset += BATCH_SIZE) {
-            const batch = ids.slice(offset, offset + BATCH_SIZE);
-
-            // Space requests apart, rather than waiting for every card.
-            if (offset > 0) {
-                await new Promise((resolve) => setTimeout(resolve, 150));
-            }
-
-            try {
-                const response = await fetch(
-                    "https://api.scryfall.com/cards/collection",
-                    {
-                        method: "POST",
-                        headers: {
-                            Accept: "application/json",
-                            "Content-Type": "application/json",
-                            "User-Agent": "Prowess/0.1",
-                        },
-                        body: JSON.stringify({
-                            identifiers: batch.map((id) => ({ id })),
-                        }),
-                        cache: "no-store",
-                        signal: AbortSignal.timeout(10000),
-                    }
-                );
-
-                if (!response.ok) {
-                    console.error(
-                        "Scryfall batch lookup failed:",
-                        response.status
-                    );
-
-                    // Avoid sending more requests after rate limiting.
-                    if (response.status === 429) break;
-
-                    continue;
-                }
-
-                const data: ScryfallCollectionResponse =
-                    await response.json();
-
-                for (const card of data.data) {
-                    names.set(
-                        card.id,
-                        `${card.name} — ${card.set.toUpperCase()} #${card.collector_number}`
-                    );
-                }
-            } catch (error) {
-                console.error("Scryfall batch lookup failed:", error);
-                // Keep IDs as fallbacks for this batch.
-            }
-        }
-
         return NextResponse.json(
             {
-                cards: rows.map((card) => ({
-                    id: card.id,
-                    scryfallId: card.scryfall_id,
-                    name: names.get(card.scryfall_id),
-                    quantity: Number(card.quantity),
-                    condition: card.card_condition,
-                    finish: card.finish,
-                    language: card.language,
-                })),
+                cards: rows.map((card) => {
+                    const printing = [
+                        card.set_code?.toUpperCase(),
+                        card.collector_number
+                            ? `#${card.collector_number}`
+                            : null,
+                    ].filter(Boolean).join(" ");
+
+                    return {
+                        id: card.id,
+                        scryfallId: card.scryfall_id,
+                        name: card.card_name
+                            ? [card.card_name, printing]
+                                .filter(Boolean)
+                                .join(" — ")
+                            : card.scryfall_id,
+                        quantity: Number(card.quantity),
+                        condition: card.card_condition,
+                        finish: card.finish,
+                        language: card.language,
+                    };
+                }),
             },
             { headers: { "Cache-Control": "no-store" } }
         );

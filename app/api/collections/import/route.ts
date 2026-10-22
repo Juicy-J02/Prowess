@@ -12,9 +12,6 @@ interface ImportedCard {
     condition: string;
     finish: string;
     language: string;
-}
-
-interface ParsedCard extends ImportedCard {
     name: string;
     setCode: string;
     collectorNumber: string;
@@ -31,20 +28,7 @@ interface ScryfallSearch {
     has_more: boolean;
 }
 
-class ImportValidationError extends Error { }
-
-const conditions: Record<string, string> = {
-    nm: "NM",
-    near_mint: "NM",
-    lp: "LP",
-    lightly_played: "LP",
-    mp: "MP",
-    moderately_played: "MP",
-    hp: "HP",
-    heavily_played: "HP",
-    dmg: "DMG",
-    damaged: "DMG",
-};
+class ImportValidationError extends Error {}
 
 const finishes: Record<string, string> = {
     normal: "nonfoil",
@@ -58,11 +42,10 @@ const finishes: Record<string, string> = {
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-function normalizeValue(value: string) {
+function normalizeValue(value: string): string {
     return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-// Only use explicitly defined mapping entries.
 function mapped(
     map: Record<string, string>,
     key: string
@@ -72,7 +55,7 @@ function mapped(
         : undefined;
 }
 
-function parseCard(value: unknown, index: number): ParsedCard {
+function parseCard(value: unknown, index: number): ImportedCard {
     function invalid(field: string): never {
         throw new ImportValidationError(
             `Row ${index + 1}: invalid or missing ${field}.`
@@ -94,17 +77,17 @@ function parseCard(value: unknown, index: number): ParsedCard {
     }
 
     function text(field: string, fallback = ""): string {
-        const value = row.get(field);
+        const fieldValue = row.get(field);
 
-        if (value === undefined || value === null) {
+        if (fieldValue === undefined || fieldValue === null) {
             return fallback;
         }
 
-        if (typeof value !== "string") {
+        if (typeof fieldValue !== "string") {
             return invalid(field);
         }
 
-        return value.trim() || fallback;
+        return fieldValue.trim() || fallback;
     }
 
     const name = text("name");
@@ -112,7 +95,9 @@ function parseCard(value: unknown, index: number): ParsedCard {
     const collectorNumber = text("collector number");
     const scryfallId = text("scryfall id").toLowerCase();
 
-    if (!name || name.length > 255) invalid("name");
+    if (!name || name.length > 255) {
+        invalid("name");
+    }
 
     if (
         setCode.length > 20 ||
@@ -140,9 +125,16 @@ function parseCard(value: unknown, index: number): ParsedCard {
         invalid("quantity");
     }
 
+    // Preserve arbitrary condition and language text.
     const condition = text("condition", "NM");
+    const language = text("language", "en");
+
     if (condition.length > 50) {
         invalid("condition (maximum 50 characters)");
+    }
+
+    if (language.length > 50) {
+        invalid("language (maximum 50 characters)");
     }
 
     const finish = mapped(
@@ -150,28 +142,24 @@ function parseCard(value: unknown, index: number): ParsedCard {
         normalizeValue(text("foil", "nonfoil"))
     );
 
-    const language = text("language", "en");
-
-    if (language.length > 50) {
-        invalid("language (maximum 50 characters)");
+    if (!finish) {
+        invalid("foil");
     }
 
-    if (!finish) invalid("foil");
-
     return {
-        name,
-        setCode,
-        collectorNumber,
         scryfallId,
         quantity,
         condition,
         finish,
         language,
+        name,
+        setCode,
+        collectorNumber,
     };
 }
 
 async function resolveScryfallId(
-    card: ParsedCard,
+    card: ImportedCard,
     index: number
 ): Promise<string> {
     const params = new URLSearchParams({
@@ -218,7 +206,7 @@ async function resolveScryfallId(
         const collectorMatches =
             !card.collectorNumber ||
             printing.collector_number.toLowerCase() ===
-            card.collectorNumber.toLowerCase();
+                card.collectorNumber.toLowerCase();
 
         return (
             collectorMatches &&
@@ -297,7 +285,7 @@ export async function POST(request: NextRequest) {
 
         const collectionId = body.collectionId;
 
-        // Validate all rows before external lookups or writes.
+        // Validate every row before lookups or writes.
         const parsedCards = body.rows.map(parseCard);
 
         const [ownedCollections] = await db.execute<RowDataPacket[]>(
@@ -317,7 +305,7 @@ export async function POST(request: NextRequest) {
         const cards: ImportedCard[] = [];
         const resolvedIds = new Map<string, string>();
 
-        // Resolve missing IDs before opening the SQL transaction.
+        // Only contact Scryfall when an ID is missing.
         for (const [index, card] of parsedCards.entries()) {
             const lookupKey = JSON.stringify([
                 card.name,
@@ -330,18 +318,18 @@ export async function POST(request: NextRequest) {
                 card.scryfallId || resolvedIds.get(lookupKey);
 
             if (!scryfallId) {
-                await new Promise((resolve) => setTimeout(resolve, 550));
+                await new Promise((resolve) =>
+                    setTimeout(resolve, 550)
+                );
 
                 scryfallId = await resolveScryfallId(card, index);
                 resolvedIds.set(lookupKey, scryfallId);
             }
 
+            // Preserve all metadata for the bulk insert.
             cards.push({
+                ...card,
                 scryfallId,
-                quantity: card.quantity,
-                condition: card.condition,
-                finish: card.finish,
-                language: card.language,
             });
         }
 
@@ -350,14 +338,15 @@ export async function POST(request: NextRequest) {
         try {
             await connection.beginTransaction();
 
-            // Recheck ownership and lock the collection during writes.
-            const [collections] = await connection.execute<RowDataPacket[]>(
-                `SELECT id
-                 FROM collections
-                 WHERE id = ? AND user_id = ?
-                 FOR UPDATE`,
-                [collectionId, user.id]
-            );
+            // Recheck ownership and lock during writes.
+            const [collections] =
+                await connection.execute<RowDataPacket[]>(
+                    `SELECT id
+                     FROM collections
+                     WHERE id = ? AND user_id = ?
+                     FOR UPDATE`,
+                    [collectionId, user.id]
+                );
 
             if (collections.length === 0) {
                 await connection.rollback();
@@ -367,13 +356,21 @@ export async function POST(request: NextRequest) {
                     { status: 404 }
                 );
             }
+
             const BATCH_SIZE = 500;
 
-            for (let offset = 0; offset < cards.length; offset += BATCH_SIZE) {
-                const batch = cards.slice(offset, offset + BATCH_SIZE);
+            for (
+                let offset = 0;
+                offset < cards.length;
+                offset += BATCH_SIZE
+            ) {
+                const batch = cards.slice(
+                    offset,
+                    offset + BATCH_SIZE
+                );
 
                 const placeholders = batch
-                    .map(() => "(?, ?, ?, ?, ?, ?)")
+                    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
                     .join(", ");
 
                 const values = batch.flatMap((card) => [
@@ -383,21 +380,30 @@ export async function POST(request: NextRequest) {
                     card.condition,
                     card.finish,
                     card.language,
+                    card.name,
+                    card.setCode,
+                    card.collectorNumber,
                 ]);
 
                 await connection.execute(
                     `INSERT INTO collection_cards (
-                    collection_id,
-                    scryfall_id,
-                    quantity,
-                    card_condition,
-                    finish,
-                    language
-                )
-                VALUES ${placeholders}
-                ON DUPLICATE KEY UPDATE
-                    quantity = quantity + VALUES(quantity)`,
-                            values
+                        collection_id,
+                        scryfall_id,
+                        quantity,
+                        card_condition,
+                        finish,
+                        language,
+                        card_name,
+                        set_code,
+                        collector_number
+                    )
+                    VALUES ${placeholders}
+                    ON DUPLICATE KEY UPDATE
+                        quantity = quantity + VALUES(quantity),
+                        card_name = VALUES(card_name),
+                        set_code = VALUES(set_code),
+                        collector_number = VALUES(collector_number)`,
+                    values
                 );
             }
 

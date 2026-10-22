@@ -3,7 +3,12 @@ import type {
     RowDataPacket,
     ResultSetHeader,
 } from "mysql2";
+
 import { db } from "@/lib/server/database";
+import {
+    loadScryfallPrices,
+    type Pricing,
+} from "@/lib/server/scryfallPrices";
 import {
     SESSION_COOKIE,
     getSessionUser,
@@ -12,14 +17,6 @@ import {
 interface Variant extends RowDataPacket {
     scryfall_id: string;
     finish: string;
-}
-
-interface Pricing {
-    prices: {
-        usd: string | null;
-        usd_foil: string | null;
-        usd_etched: string | null;
-    };
 }
 
 function reply(body: object, status = 200) {
@@ -44,7 +41,11 @@ function priceCents(
                 ? card.prices.usd
                 : null;
 
-    if (raw === null || raw === undefined || raw === "") {
+    if (
+        raw === null ||
+        raw === undefined ||
+        raw === ""
+    ) {
         return null;
     }
 
@@ -120,6 +121,7 @@ export async function POST(request: NextRequest) {
         if (
             !body ||
             typeof body !== "object" ||
+            Array.isArray(body) ||
             !("transactionId" in body)
         ) {
             return reply(
@@ -167,7 +169,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Avoid external requests for prices already saved today.
+        // Skip prices already recorded today.
         const missing = await missingVariants(
             transactionId,
             user.id
@@ -180,48 +182,8 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        const prices = new Map<string, Pricing | null>();
-
-        for (const variant of missing) {
-            if (prices.has(variant.scryfall_id)) {
-                continue;
-            }
-
-            await new Promise((resolve) =>
-                setTimeout(resolve, 550)
-            );
-
-            try {
-                const response = await fetch(
-                    `https://api.scryfall.com/cards/${encodeURIComponent(
-                        variant.scryfall_id
-                    )}`,
-                    {
-                        headers: {
-                            Accept: "application/json",
-                            "User-Agent": "Prowess/0.1",
-                        },
-                        cache: "no-store",
-                        signal: AbortSignal.timeout(10000),
-                    }
-                );
-
-                prices.set(
-                    variant.scryfall_id,
-                    response.ok
-                        ? ((await response.json()) as Pricing)
-                        : null
-                );
-            } catch (error) {
-                console.error(
-                    "Snapshot price lookup failed:",
-                    variant.scryfall_id,
-                    error
-                );
-
-                prices.set(variant.scryfall_id, null);
-            }
-        }
+        // Shared batch lookup replaces individual requests.
+        const prices = await loadScryfallPrices(missing);
 
         const priced = missing.flatMap((variant) => {
             const card = prices.get(variant.scryfall_id);
@@ -252,7 +214,7 @@ export async function POST(request: NextRequest) {
 
         try {
             const [locks] = await conn.execute<
-                (RowDataPacket & { acquired: number })[]
+                (RowDataPacket & { acquired: number | null })[]
             >(
                 `SELECT GET_LOCK(
                     'prowess_daily_price_snapshots',
@@ -260,7 +222,7 @@ export async function POST(request: NextRequest) {
                 ) AS acquired`
             );
 
-            if (Number(locks[0].acquired) !== 1) {
+            if (Number(locks[0]?.acquired) !== 1) {
                 return reply(
                     {
                         error:
@@ -275,7 +237,7 @@ export async function POST(request: NextRequest) {
             await conn.beginTransaction();
 
             try {
-                // Recheck ownership after external requests.
+                // Ownership may have changed during price lookups.
                 const [owned] =
                     await conn.execute<RowDataPacket[]>(
                         `SELECT id

@@ -322,6 +322,7 @@ export default function CollectionCards({ cards }: Props) {
                                         src={card.imageUrl}
                                         alt={card.name}
                                         loading="lazy"
+                                        decoding="async"
                                         width={488}
                                         height={680}
                                         className="mb-3 h-auto w-full rounded-lg"

@@ -7,6 +7,10 @@ import type { RowDataPacket } from "mysql2";
 import AutoRecordSnapshot from "@/components/AutoRecordSnapshot";
 import { db } from "@/lib/server/database";
 import {
+    loadScryfallPrices,
+    type Pricing,
+} from "@/lib/server/scryfallPrices";
+import {
     SESSION_COOKIE,
     getSessionUser,
 } from "@/lib/server/session";
@@ -35,15 +39,6 @@ interface TransactionRow extends RowDataPacket {
 interface CollectionRow extends RowDataPacket {
     id: number;
     name: string;
-}
-
-interface Pricing {
-    name: string;
-    prices: {
-        usd: string | null;
-        usd_foil: string | null;
-        usd_etched: string | null;
-    };
 }
 
 interface SnapshotRow extends RowDataPacket {
@@ -137,23 +132,22 @@ async function loadBasket(
         };
     }
 
-    const [transactions] =
-        await db.execute<TransactionRow[]>(
-            `SELECT
-                id,
-                name,
-                type,
-                currency,
-                total_amount * 100 AS amount_cents,
-                DATE_FORMAT(
-                    occurred_at,
-                    '%Y-%m-%d %H:%i:%s'
-                ) AS occurred_at_sql
-             FROM transactions
-             WHERE id = ?
-               AND user_id = ?`,
-            [selectedId, userId]
-        );
+    const [transactions] = await db.execute<TransactionRow[]>(
+        `SELECT
+            id,
+            name,
+            type,
+            currency,
+            total_amount * 100 AS amount_cents,
+            DATE_FORMAT(
+                occurred_at,
+                '%Y-%m-%d %H:%i:%s'
+            ) AS occurred_at_sql
+         FROM transactions
+         WHERE id = ?
+           AND user_id = ?`,
+        [selectedId, userId]
+    );
 
     if (
         !transactions.length ||
@@ -249,61 +243,12 @@ function unitCents(
         : null;
 }
 
-async function loadPrices(cards: BasketCard[]) {
-    const prices = new Map<string, Pricing | null>();
-
-    for (const card of cards) {
-        if (prices.has(card.scryfall_id)) {
-            continue;
-        }
-
-        await new Promise((resolve) =>
-            setTimeout(resolve, 550)
-        );
-
-        try {
-            const response = await fetch(
-                `https://api.scryfall.com/cards/${encodeURIComponent(
-                    card.scryfall_id
-                )}`,
-                {
-                    headers: {
-                        Accept: "application/json",
-                        "User-Agent": "Prowess/0.1",
-                    },
-                    cache: "no-store",
-                    signal: AbortSignal.timeout(10000),
-                }
-            );
-
-            prices.set(
-                card.scryfall_id,
-                response.ok
-                    ? ((await response.json()) as Pricing)
-                    : null
-            );
-        } catch (error) {
-            console.error(
-                "Price lookup failed:",
-                card.scryfall_id,
-                error
-            );
-
-            prices.set(card.scryfall_id, null);
-        }
-    }
-
-    return prices;
-}
-
 async function recordCollectionSnapshot(
     userId: number,
     collectionId: string,
     cards: BasketCard[],
     prices: Map<string, Pricing | null>
 ) {
-    // The caller authenticates the user and verifies ownership.
-    // Reuse the prices already loaded for this visit.
     let cents = 0;
     let covered = 0;
 
@@ -319,9 +264,7 @@ async function recordCollectionSnapshot(
         }
     }
 
-    // scope_id = 0 represents all collections combined.
-    // Repeat visits update today's observation.
-    // Previous dates remain unchanged.
+    // Scope 0 represents all collections combined.
     // Incomplete observations have a null total.
     await db.execute(
         `INSERT INTO collection_value_snapshots (
@@ -351,35 +294,31 @@ async function loadCollectionHistory(
     userId: number,
     collectionId: string
 ): Promise<HistoryPoint[]> {
-    const [rows] =
-        await db.execute<CollectionSnapshotRow[]>(
-            `SELECT
-                DATE_FORMAT(
-                    snapshot_day,
-                    '%Y-%m-%d'
-                ) AS day,
-                value_cents AS cents,
-                covered,
-                variant_count
-             FROM collection_value_snapshots
-             WHERE user_id = ?
-               AND scope_id = ?
-               AND snapshot_day >=
-                   UTC_DATE() - INTERVAL 90 DAY
-               AND snapshot_day <= UTC_DATE()
-             ORDER BY snapshot_day`,
-            [
-                userId,
-                collectionId === "all" ? "0" : collectionId,
-            ]
-        );
+    const [rows] = await db.execute<CollectionSnapshotRow[]>(
+        `SELECT
+            DATE_FORMAT(
+                snapshot_day,
+                '%Y-%m-%d'
+            ) AS day,
+            value_cents AS cents,
+            covered,
+            variant_count
+         FROM collection_value_snapshots
+         WHERE user_id = ?
+           AND scope_id = ?
+           AND snapshot_day >=
+               UTC_DATE() - INTERVAL 90 DAY
+           AND snapshot_day <= UTC_DATE()
+         ORDER BY snapshot_day`,
+        [
+            userId,
+            collectionId === "all" ? "0" : collectionId,
+        ]
+    );
 
     return rows.map((row) => ({
         day: row.day,
-        cents:
-            row.cents === null
-                ? null
-                : Number(row.cents),
+        cents: row.cents === null ? null : Number(row.cents),
         covered: Number(row.covered),
         variantCount: Number(row.variant_count),
     }));
@@ -389,15 +328,11 @@ function buildHistory(
     cards: BasketCard[],
     rows: SnapshotRow[]
 ): HistoryPoint[] {
-    const days = new Map<
-        string,
-        Map<string, number>
-    >();
+    const days = new Map<string, Map<string, number>>();
 
     for (const row of rows) {
         const prices =
-            days.get(row.day) ??
-            new Map<string, number>();
+            days.get(row.day) ?? new Map<string, number>();
 
         prices.set(
             variantKey(row.scryfall_id, row.finish),
@@ -415,10 +350,7 @@ function buildHistory(
 
             for (const card of cards) {
                 const price = prices.get(
-                    variantKey(
-                        card.scryfall_id,
-                        card.finish
-                    )
+                    variantKey(card.scryfall_id, card.finish)
                 );
 
                 if (price !== undefined) {
@@ -430,10 +362,7 @@ function buildHistory(
             return {
                 day,
                 covered,
-                cents:
-                    covered === cards.length
-                        ? cents
-                        : null,
+                cents: covered === cards.length ? cents : null,
             };
         });
 }
@@ -447,10 +376,7 @@ async function loadHistory(
     }
 
     const conditions = cards
-        .map(
-            () =>
-                "(s.scryfall_id = ? AND s.finish = ?)"
-        )
+        .map(() => "(s.scryfall_id = ? AND s.finish = ?)")
         .join(" OR ");
 
     const variants = cards.flatMap((card) => [
@@ -495,10 +421,7 @@ function signedMoney(cents: number) {
     return `${cents > 0 ? "+" : ""}${money(cents)}`;
 }
 
-function signedPercent(
-    change: number,
-    baseline: number
-) {
+function signedPercent(change: number, baseline: number) {
     if (baseline <= 0) {
         return "—";
     }
@@ -606,9 +529,7 @@ function chartGeometry(
 
             active = [];
         } else {
-            active.push(
-                `${x(point.day)},${y(point.cents)}`
-            );
+            active.push(`${x(point.day)},${y(point.cents)}`);
         }
     }
 
@@ -657,7 +578,6 @@ function HistoryGraph({
 
     const first = chart.points[0];
     const last = chart.points[chart.points.length - 1];
-
     const change = last.cents - first.cents;
     const enoughHistory = chart.points.length >= 2;
 
@@ -874,9 +794,7 @@ async function selectValueView(formData: FormData) {
     );
 }
 
-export default function ValuePage({
-    searchParams,
-}: Props) {
+export default function ValuePage({ searchParams }: Props) {
     return (
         <main className="mx-auto w-full max-w-5xl px-6 py-8">
             <h1 className="text-3xl font-semibold">
@@ -896,9 +814,7 @@ export default function ValuePage({
     );
 }
 
-async function UserValue({
-    searchParams,
-}: Props) {
+async function UserValue({ searchParams }: Props) {
     await connection();
 
     const user = await requireUser();
@@ -922,14 +838,13 @@ async function UserValue({
         ? `collection:${selectedCollection}`
         : `transaction:${selectedId}`;
 
-    const [collections] =
-        await db.execute<CollectionRow[]>(
-            `SELECT id, name
-             FROM collections
-             WHERE user_id = ?
-             ORDER BY name, id`,
-            [user.id]
-        );
+    const [collections] = await db.execute<CollectionRow[]>(
+        `SELECT id, name
+         FROM collections
+         WHERE user_id = ?
+         ORDER BY name, id`,
+        [user.id]
+    );
 
     const collectionName =
         selectedCollection === "all"
@@ -939,43 +854,34 @@ async function UserValue({
                       String(collection.id) === selectedCollection
               )?.name;
 
-    if (
-        collectionMode &&
-        collectionName === undefined
-    ) {
+    if (collectionMode && collectionName === undefined) {
         notFound();
     }
 
-    const [options] =
-        await db.execute<TransactionRow[]>(
-            `SELECT
-                id,
-                name,
-                type,
-                currency,
-                total_amount * 100 AS amount_cents,
-                DATE_FORMAT(
-                    occurred_at,
-                    '%Y-%m-%d %H:%i:%s'
-                ) AS occurred_at_sql
-             FROM transactions
-             WHERE user_id = ?
-               AND currency = 'USD'
-             ORDER BY occurred_at DESC, id DESC`,
-            [user.id]
-        );
+    const [options] = await db.execute<TransactionRow[]>(
+        `SELECT
+            id,
+            name,
+            type,
+            currency,
+            total_amount * 100 AS amount_cents,
+            DATE_FORMAT(
+                occurred_at,
+                '%Y-%m-%d %H:%i:%s'
+            ) AS occurred_at_sql
+         FROM transactions
+         WHERE user_id = ?
+           AND currency = 'USD'
+         ORDER BY occurred_at DESC, id DESC`,
+        [user.id]
+    );
 
     const { cards, transaction } = collectionMode
-        ? await loadCollectionBasket(
-              user.id,
-              selectedCollection
-          )
-        : await loadBasket(
-              user.id,
-              selectedId
-          );
+        ? await loadCollectionBasket(user.id, selectedCollection)
+        : await loadBasket(user.id, selectedId);
 
-    const prices = await loadPrices(cards);
+    // Shared batch lookup replaces per-card requests.
+    const prices = await loadScryfallPrices(cards);
 
     const values = cards.map((card) => ({
         id: card.scryfall_id,
@@ -1004,8 +910,7 @@ async function UserValue({
 
     const missing = values.reduce(
         (sum, card) =>
-            sum +
-            (card.cents === null ? card.quantity : 0),
+            sum + (card.cents === null ? card.quantity : 0),
         0
     );
 
@@ -1017,10 +922,7 @@ async function UserValue({
     const complete = cards.length > 0 && missing === 0;
 
     const paid = options
-        .filter(
-            (transaction) =>
-                transaction.type === "purchase"
-        )
+        .filter((transaction) => transaction.type === "purchase")
         .reduce(
             (sum, transaction) =>
                 sum + Number(transaction.amount_cents),
@@ -1028,10 +930,7 @@ async function UserValue({
         );
 
     const received = options
-        .filter(
-            (transaction) =>
-                transaction.type === "sale"
-        )
+        .filter((transaction) => transaction.type === "sale")
         .reduce(
             (sum, transaction) =>
                 sum + Number(transaction.amount_cents),
@@ -1067,13 +966,8 @@ async function UserValue({
         }
     }
 
-    // Load history after saving so today's snapshot
-    // appears on the graph immediately.
     const history: HistoryPoint[] = transaction
-        ? await loadHistory(
-              cards,
-              transaction.occurred_at_sql
-          )
+        ? await loadHistory(cards, transaction.occurred_at_sql)
         : collectionMode
           ? await loadCollectionHistory(
                 user.id,
@@ -1082,9 +976,8 @@ async function UserValue({
           : [];
 
     const firstCompleteValue =
-        history.find(
-            (point) => point.cents !== null
-        )?.cents ?? null;
+        history.find((point) => point.cents !== null)?.cents ??
+        null;
 
     const checkedAt = new Date().toISOString();
 
@@ -1132,14 +1025,9 @@ async function UserValue({
                                     {" — "}
                                     {transaction.type}
                                     {" — "}
-                                    {transaction.occurred_at_sql.slice(
-                                        0,
-                                        10
-                                    )}
+                                    {transaction.occurred_at_sql.slice(0, 10)}
                                     {" — "}
-                                    {money(
-                                        Number(transaction.amount_cents)
-                                    )}
+                                    {money(Number(transaction.amount_cents))}
                                 </option>
                             ))}
                         </optgroup>
@@ -1195,19 +1083,14 @@ async function UserValue({
                                     ? signedMoney(difference)
                                     : "Unavailable"
                             }
-                            change={
-                                complete ? difference : null
-                            }
+                            change={complete ? difference : null}
                         />
 
                         <Metric
                             title="Percentage difference"
                             value={
                                 complete
-                                    ? signedPercent(
-                                          difference,
-                                          baseline
-                                      )
+                                    ? signedPercent(difference, baseline)
                                     : "—"
                             }
                             change={
@@ -1262,11 +1145,7 @@ async function UserValue({
                     </div>
 
                     <p
-                        role={
-                            snapshotError
-                                ? "status"
-                                : undefined
-                        }
+                        role={snapshotError ? "status" : undefined}
                         className={
                             snapshotError
                                 ? "text-sm text-amber-600"
@@ -1337,7 +1216,8 @@ async function UserValue({
             <p className="text-sm text-zinc-500">
                 USD reference prices match printing and finish;
                 condition and language are not adjusted.
-                Lookup completed:{" "}
+                Prices are cached for up to one hour.
+                {" "}Lookup completed:{" "}
                 <time dateTime={checkedAt}>
                     {checkedAt}
                 </time>
@@ -1354,9 +1234,7 @@ async function UserValue({
             {(transaction || collectionMode) && (
                 <section className="space-y-3 rounded-xl border p-5">
                     <h2 className="text-xl font-semibold">
-                        {transaction
-                            ? "Transaction"
-                            : "Collection"}{" "}
+                        {transaction ? "Transaction" : "Collection"}{" "}
                         value over time
                     </h2>
 
@@ -1369,12 +1247,8 @@ async function UserValue({
 
                     <HistoryGraph
                         history={history}
-                        baseline={
-                            transaction ? baseline : null
-                        }
-                        type={
-                            transaction?.type ?? "collection"
-                        }
+                        baseline={transaction ? baseline : null}
+                        type={transaction?.type ?? "collection"}
                     />
 
                     {!history.length ? (
@@ -1391,17 +1265,14 @@ async function UserValue({
                                         <th className="p-3">
                                             Date (UTC)
                                         </th>
-
                                         <th className="p-3">
                                             Reference value
                                         </th>
-
                                         <th className="p-3">
                                             {transaction
                                                 ? "Comparison"
                                                 : "Change since first complete snapshot"}
                                         </th>
-
                                         <th className="p-3">
                                             Coverage
                                         </th>
@@ -1416,12 +1287,9 @@ async function UserValue({
                                         if (point.cents !== null) {
                                             if (transaction) {
                                                 comparison =
-                                                    transaction.type ===
-                                                    "sale"
-                                                        ? baseline -
-                                                          point.cents
-                                                        : point.cents -
-                                                          baseline;
+                                                    transaction.type === "sale"
+                                                        ? baseline - point.cents
+                                                        : point.cents - baseline;
                                             } else if (
                                                 firstCompleteValue !== null
                                             ) {
@@ -1453,9 +1321,7 @@ async function UserValue({
                                                 >
                                                     {comparison === null
                                                         ? "—"
-                                                        : signedMoney(
-                                                              comparison
-                                                          )}
+                                                        : signedMoney(comparison)}
                                                 </td>
 
                                                 <td className="p-3">
@@ -1497,21 +1363,11 @@ async function UserValue({
                         <table className="w-full text-left text-sm">
                             <thead>
                                 <tr>
-                                    <th className="p-3">
-                                        Card
-                                    </th>
-                                    <th className="p-3">
-                                        Finish
-                                    </th>
-                                    <th className="p-3">
-                                        Quantity
-                                    </th>
-                                    <th className="p-3">
-                                        Unit price
-                                    </th>
-                                    <th className="p-3">
-                                        Total
-                                    </th>
+                                    <th className="p-3">Card</th>
+                                    <th className="p-3">Finish</th>
+                                    <th className="p-3">Quantity</th>
+                                    <th className="p-3">Unit price</th>
+                                    <th className="p-3">Total</th>
                                 </tr>
                             </thead>
 
@@ -1527,21 +1383,17 @@ async function UserValue({
                                         <td className="p-3">
                                             {card.name}
                                         </td>
-
                                         <td className="p-3">
                                             {card.finish}
                                         </td>
-
                                         <td className="p-3">
                                             {card.quantity}
                                         </td>
-
                                         <td className="p-3">
                                             {card.cents === null
                                                 ? "Unavailable"
                                                 : money(card.cents)}
                                         </td>
-
                                         <td className="p-3">
                                             {card.cents === null
                                                 ? "—"
