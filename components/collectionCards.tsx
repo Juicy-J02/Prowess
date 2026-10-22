@@ -312,46 +312,85 @@ export default function CollectionCards({ cards }: Props) {
             ) : (
                 <>
                     <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                        {visibleCards.map((card) => (
-                            <li
-                                key={card.id}
-                                className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
-                            >
-                                {card.imageUrl ? (
-                                    <img
-                                        src={card.imageUrl}
-                                        alt={card.name}
-                                        loading="lazy"
-                                        decoding="async"
-                                        width={488}
-                                        height={680}
-                                        className="mb-3 h-auto w-full rounded-lg"
-                                    />
-                                ) : (
-                                    <div className="mb-3 flex aspect-[488/680] items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-500 dark:bg-zinc-900">
-                                        Image unavailable
-                                    </div>
-                                )}
+                        {visibleCards.map((card) => {
+                            const normalizedFinish = card.finish
+                                .trim()
+                                .toLowerCase();
 
-                                <h2 className="break-words font-semibold">
-                                    {card.quantity}× {card.name}
-                                </h2>
+                            const isEtched =
+                                normalizedFinish.includes("etched");
 
-                                {card.setCode && (
-                                    <p className="mt-2 text-sm">
-                                        {card.setCode.toUpperCase()}
-                                        {card.collectorNumber &&
-                                            ` #${card.collectorNumber}`}
+                            const isFoil =
+                                normalizedFinish === "foil";
+
+                            return (
+                                <li
+                                    key={card.id}
+                                    className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                                >
+                                    {card.imageUrl ? (
+                                        <div className="relative isolate mb-3 overflow-hidden rounded-lg">
+                                            <img
+                                                src={card.imageUrl}
+                                                alt={card.name}
+                                                loading="lazy"
+                                                decoding="async"
+                                                width={488}
+                                                height={680}
+                                                className="block h-auto w-full"
+                                            />
+
+                                            {isFoil && (
+                                                <div
+                                                    aria-hidden="true"
+                                                    className="pointer-events-none absolute inset-0 z-10"
+                                                    style={{
+                                                        background:
+                                                            "linear-gradient(115deg, rgba(255,80,160,0.3), rgba(140,90,255,0.3), rgba(50,200,255,0.3), rgba(100,255,150,0.3), rgba(255,220,80,0.3))",
+                                                        mixBlendMode:
+                                                            "screen",
+                                                    }}
+                                                />
+                                            )}
+
+                                            {isEtched && (
+                                                <div
+                                                    aria-hidden="true"
+                                                    className="pointer-events-none absolute inset-0 z-10"
+                                                    style={{
+                                                        background:
+                                                            "repeating-linear-gradient(125deg, rgba(240,220,160,0.4) 0px, rgba(240,220,160,0.4) 1px, transparent 1px, transparent 4px)",
+                                                        mixBlendMode: "screen",
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="mb-3 flex aspect-[488/680] items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-500 dark:bg-zinc-900">
+                                            Image unavailable
+                                        </div>
+                                    )}
+
+                                    <h2 className="break-words font-semibold">
+                                        {card.quantity}× {card.name}
+                                    </h2>
+
+                                    {card.setCode && (
+                                        <p className="mt-2 text-sm">
+                                            {card.setCode.toUpperCase()}
+                                            {card.collectorNumber &&
+                                                ` #${card.collectorNumber}`}
+                                        </p>
+                                    )}
+
+                                    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                                        {card.condition} · {card.finish}
+                                        {" · "}
+                                        {card.language}
                                     </p>
-                                )}
-
-                                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                                    {card.condition} · {card.finish}
-                                    {" · "}
-                                    {card.language}
-                                </p>
-                            </li>
-                        ))}
+                                </li>
+                            );
+                        })}
                     </ul>
 
                     {totalPages > 1 && (

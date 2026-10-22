@@ -24,3 +24,62 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.card-foil,
+.card-etched {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+/* Rainbow foil */
+.card-foil::after {
+    content: "";
+    position: absolute;
+    inset: -100%;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(
+        115deg,
+        transparent 30%,
+        rgb(255 100 180 / 22%) 40%,
+        rgb(150 120 255 / 25%) 47%,
+        rgb(80 210 255 / 25%) 54%,
+        rgb(120 255 170 / 22%) 61%,
+        transparent 72%
+    );
+    animation: foil-shimmer 5s ease-in-out infinite alternate;
+}
+
+@keyframes foil-shimmer {
+    from {
+        transform: translateX(-20%);
+    }
+    to {
+        transform: translateX(20%);
+    }
+}
+
+/* Textured metallic etched finish */
+.card-etched {
+    background-image:
+        repeating-linear-gradient(
+            125deg,
+            rgb(150 150 170 / 12%) 0,
+            rgb(150 150 170 / 12%) 1px,
+            transparent 1px,
+            transparent 4px
+        ),
+        linear-gradient(
+            110deg,
+            transparent,
+            rgb(180 170 130 / 20%),
+            transparent
+        );
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card-foil::after {
+        animation: none;
+    }
+}
