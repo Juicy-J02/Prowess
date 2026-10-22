@@ -31,7 +31,7 @@ interface ScryfallSearch {
     has_more: boolean;
 }
 
-class ImportValidationError extends Error {}
+class ImportValidationError extends Error { }
 
 const conditions: Record<string, string> = {
     nm: "NM",
@@ -161,10 +161,10 @@ function parseCard(value: unknown, index: number): ParsedCard {
         invalid("quantity");
     }
 
-    const condition = mapped(
-        conditions,
-        normalizeValue(text("condition", "NM"))
-    );
+    const condition = text("condition", "NM");
+    if (condition.length > 50) {
+        invalid("condition (maximum 50 characters)");
+    }
 
     const finish = mapped(
         finishes,
@@ -174,7 +174,6 @@ function parseCard(value: unknown, index: number): ParsedCard {
     const rawLanguage = normalizeValue(text("language", "en"));
     const language = mapped(languages, rawLanguage) ?? rawLanguage;
 
-    if (!condition) invalid("condition");
     if (!finish) invalid("foil");
     if (!languageCodes.has(language)) invalid("language");
 
@@ -238,7 +237,7 @@ async function resolveScryfallId(
         const collectorMatches =
             !card.collectorNumber ||
             printing.collector_number.toLowerCase() ===
-                card.collectorNumber.toLowerCase();
+            card.collectorNumber.toLowerCase();
 
         return (
             collectorMatches &&
