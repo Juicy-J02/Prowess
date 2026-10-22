@@ -55,27 +55,6 @@ const finishes: Record<string, string> = {
     etched_foil: "etched",
 };
 
-const languages: Record<string, string> = {
-    english: "en",
-    japanese: "ja",
-    german: "de",
-    french: "fr",
-    italian: "it",
-    spanish: "es",
-    portuguese: "pt",
-    korean: "ko",
-    russian: "ru",
-    simplified_chinese: "zhs",
-    traditional_chinese: "zht",
-    chinese_simplified: "zhs",
-    chinese_traditional: "zht",
-};
-
-const languageCodes = new Set([
-    "en", "ja", "de", "fr", "it", "es", "pt", "ko",
-    "ru", "zhs", "zht", "he", "la", "grc", "ar", "sa", "ph",
-]);
-
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -171,11 +150,13 @@ function parseCard(value: unknown, index: number): ParsedCard {
         normalizeValue(text("foil", "nonfoil"))
     );
 
-    const rawLanguage = normalizeValue(text("language", "en"));
-    const language = mapped(languages, rawLanguage) ?? rawLanguage;
+    const language = text("language", "en");
+
+    if (language.length > 50) {
+        invalid("language (maximum 50 characters)");
+    }
 
     if (!finish) invalid("foil");
-    if (!languageCodes.has(language)) invalid("language");
 
     return {
         name,
