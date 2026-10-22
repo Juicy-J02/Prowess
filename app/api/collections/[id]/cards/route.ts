@@ -62,45 +62,76 @@ export async function GET(request: NextRequest, { params }: Props) {
             [id]
         );
 
-        // Look up each printing once to provide readable names.
-        const names = new Map<string, string>();
+        // Default to the ID if card details are unavailable.
+        const ids = [...new Set(rows.map((card) => card.scryfall_id))];
 
-        for (const card of rows) {
-            if (names.has(card.scryfall_id)) continue;
+        const names = new Map<string, string>(
+            ids.map((id) => [id, id])
+        );
 
-            names.set(card.scryfall_id, card.scryfall_id);
+        interface ScryfallCardDetails {
+            id: string;
+            name: string;
+            set: string;
+            collector_number: string;
+        }
 
-            await new Promise((resolve) => setTimeout(resolve, 550));
+        interface ScryfallCollectionResponse {
+            data: ScryfallCardDetails[];
+        }
+
+        const BATCH_SIZE = 75;
+
+        for (let offset = 0; offset < ids.length; offset += BATCH_SIZE) {
+            const batch = ids.slice(offset, offset + BATCH_SIZE);
+
+            // Space requests apart, rather than waiting for every card.
+            if (offset > 0) {
+                await new Promise((resolve) => setTimeout(resolve, 150));
+            }
 
             try {
                 const response = await fetch(
-                    `https://api.scryfall.com/cards/${encodeURIComponent(
-                        card.scryfall_id
-                    )}`,
+                    "https://api.scryfall.com/cards/collection",
                     {
+                        method: "POST",
                         headers: {
                             Accept: "application/json",
+                            "Content-Type": "application/json",
                             "User-Agent": "Prowess/0.1",
                         },
-                        next: { revalidate: 86400 },
+                        body: JSON.stringify({
+                            identifiers: batch.map((id) => ({ id })),
+                        }),
+                        cache: "no-store",
                         signal: AbortSignal.timeout(10000),
                     }
                 );
 
-                if (response.ok) {
-                    const data: {
-                        name: string;
-                        set: string;
-                        collector_number: string;
-                    } = await response.json();
+                if (!response.ok) {
+                    console.error(
+                        "Scryfall batch lookup failed:",
+                        response.status
+                    );
 
+                    // Avoid sending more requests after rate limiting.
+                    if (response.status === 429) break;
+
+                    continue;
+                }
+
+                const data: ScryfallCollectionResponse =
+                    await response.json();
+
+                for (const card of data.data) {
                     names.set(
-                        card.scryfall_id,
-                        `${data.name} — ${data.set.toUpperCase()} #${data.collector_number}`
+                        card.id,
+                        `${card.name} — ${card.set.toUpperCase()} #${card.collector_number}`
                     );
                 }
-            } catch {
-                // Keep the ID as a fallback if details are unavailable.
+            } catch (error) {
+                console.error("Scryfall batch lookup failed:", error);
+                // Keep IDs as fallbacks for this batch.
             }
         }
 
