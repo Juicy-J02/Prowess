@@ -56,7 +56,15 @@ function PriceGraph({ points }: { points: Point[] }) {
             {points.map((p, i) => <circle key={p.day} cx={x(i)} cy={y(p.cents)} r="4" fill={color}>
                 <title>{`${p.day}: ${money(p.cents)}`}</title>
             </circle>)}
-            <text x={left} y={height - 12} fontSize="11" fill="currentColor">{points[0].day}</text>
+            <text
+                x={start === end ? x(0) : left}
+                y={height - 12}
+                textAnchor={start === end ? "middle" : "start"}
+                fontSize="11"
+                fill="currentColor"
+            >
+                {points[0].day}
+            </text>
             {start !== end && <text x={width - right} y={height - 12} textAnchor="end" fontSize="11" fill="currentColor">{points[points.length - 1].day}</text>}
         </svg>
     </div>;
