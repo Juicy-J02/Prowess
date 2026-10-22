@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
 
 import AutoRecordSnapshot from "@/components/AutoRecordSnapshot";
+import ValueCardsTable from "@/components/valueCardsTable";
 import { db } from "@/lib/server/database";
 import {
     loadScryfallPrices,
@@ -633,8 +634,8 @@ function HistoryGraph({
                     className="h-auto min-w-[540px] w-full"
                     role="img"
                     aria-label={`Recorded ${type === "collection"
-                            ? "collection"
-                            : "transaction"
+                        ? "collection"
+                        : "transaction"
                         } value from ${first.day} to ${last.day}`}
                 >
                     <title>
@@ -1346,66 +1347,15 @@ async function UserValue({ searchParams }: Props) {
                 </p>
             )}
 
-            <section className="space-y-3">
-                <h2 className="text-xl font-semibold">
-                    {transaction
+            <ValueCardsTable
+                key={selectedValue}
+                cards={values}
+                title={
+                    transaction
                         ? "Cards in transaction"
-                        : "Current collection cards"}
-                </h2>
-
-                {!values.length ? (
-                    <p>No cards to value.</p>
-                ) : (
-                    <div className="overflow-x-auto rounded-xl border">
-                        <table className="w-full text-left text-sm">
-                            <thead>
-                                <tr>
-                                    <th className="p-3">Card</th>
-                                    <th className="p-3">Finish</th>
-                                    <th className="p-3">Quantity</th>
-                                    <th className="p-3">Unit price</th>
-                                    <th className="p-3">Total</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                {values.map((card) => (
-                                    <tr
-                                        key={variantKey(
-                                            card.id,
-                                            card.finish
-                                        )}
-                                        className="border-t"
-                                    >
-                                        <td className="p-3">
-                                            {card.name}
-                                        </td>
-                                        <td className="p-3">
-                                            {card.finish}
-                                        </td>
-                                        <td className="p-3">
-                                            {card.quantity}
-                                        </td>
-                                        <td className="p-3">
-                                            {card.cents === null
-                                                ? "Unavailable"
-                                                : money(card.cents)}
-                                        </td>
-                                        <td className="p-3">
-                                            {card.cents === null
-                                                ? "—"
-                                                : money(
-                                                    card.cents *
-                                                    card.quantity
-                                                )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </section>
+                        : "Current collection cards"
+                }
+            />
         </div>
     );
 }
