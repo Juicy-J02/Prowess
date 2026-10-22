@@ -115,7 +115,7 @@ export default function SignIn() {
         setRegistering(false);
         setSuccess("Account created. You can now sign in.");
       } else {
-        window.location.href = "/collection";
+        window.location.href = "/";
       }
     } catch (error) {
       setError(
@@ -212,10 +212,10 @@ export default function SignIn() {
             {user ? (
               <div className="mt-8 flex flex-col gap-4">
                 <Link
-                  href="/collection"
+                  href="/"
                   className="rounded-lg bg-blue-600 px-4 py-3 text-center font-medium text-white hover:bg-blue-700"
                 >
-                  View Collection
+                  Home
                 </Link>
 
                 <button
