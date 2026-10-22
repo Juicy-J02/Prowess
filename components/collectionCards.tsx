@@ -186,10 +186,6 @@ export default function CollectionCards({ cards }: Props) {
                     </span>{" "}
                     variants
                 </p>
-
-                <span className="badge">
-                    {PAGE_SIZE} cards per page
-                </span>
             </div>
 
             {missingDetails && (
