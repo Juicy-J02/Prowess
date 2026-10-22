@@ -367,29 +367,37 @@ export async function POST(request: NextRequest) {
                     { status: 404 }
                 );
             }
+            const BATCH_SIZE = 500;
 
-            for (const card of cards) {
+            for (let offset = 0; offset < cards.length; offset += BATCH_SIZE) {
+                const batch = cards.slice(offset, offset + BATCH_SIZE);
+
+                const placeholders = batch
+                    .map(() => "(?, ?, ?, ?, ?, ?)")
+                    .join(", ");
+
+                const values = batch.flatMap((card) => [
+                    collectionId,
+                    card.scryfallId,
+                    card.quantity,
+                    card.condition,
+                    card.finish,
+                    card.language,
+                ]);
+
                 await connection.execute(
                     `INSERT INTO collection_cards (
-                        collection_id,
-                        scryfall_id,
-                        quantity,
-                        card_condition,
-                        finish,
-                        language
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        quantity = quantity + ?`,
-                    [
-                        collectionId,
-                        card.scryfallId,
-                        card.quantity,
-                        card.condition,
-                        card.finish,
-                        card.language,
-                        card.quantity,
-                    ]
+                    collection_id,
+                    scryfall_id,
+                    quantity,
+                    card_condition,
+                    finish,
+                    language
+                )
+                VALUES ${placeholders}
+                ON DUPLICATE KEY UPDATE
+                    quantity = quantity + VALUES(quantity)`,
+                            values
                 );
             }
 
