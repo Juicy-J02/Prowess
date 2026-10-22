@@ -21,13 +21,11 @@ interface OwnedCard extends RowDataPacket {
 
 class ValidationError extends Error {}
 
-const conditions = new Set(["NM", "LP", "MP", "HP", "DMG"]);
-const finishes = new Set(["nonfoil", "foil", "etched"]);
+const MAX_QUANTITY = 4294967295;
+const MAX_CONDITION_LENGTH = 100;
+const MAX_LANGUAGE_LENGTH = 100;
 
-const languageCodes = new Set([
-    "en", "ja", "de", "fr", "it", "es", "pt", "ko",
-    "ru", "zhs", "zht", "he", "la", "grc", "ar", "sa", "ph",
-]);
+const finishes = new Set(["nonfoil", "foil", "etched"]);
 
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,16 +56,19 @@ function parseItem(value: unknown, index: number): TransactionItem {
         typeof item.quantity !== "number" ||
         !Number.isSafeInteger(item.quantity) ||
         item.quantity <= 0 ||
-        item.quantity > 4294967295
+        item.quantity > MAX_QUANTITY
     ) {
         invalid("quantity must be a positive integer.");
     }
 
     if (
         typeof item.condition !== "string" ||
-        !conditions.has(item.condition)
+        item.condition.trim().length === 0 ||
+        item.condition.trim().length > MAX_CONDITION_LENGTH
     ) {
-        invalid("invalid condition.");
+        invalid(
+            `condition must contain 1–${MAX_CONDITION_LENGTH} characters.`
+        );
     }
 
     if (
@@ -79,17 +80,20 @@ function parseItem(value: unknown, index: number): TransactionItem {
 
     if (
         typeof item.language !== "string" ||
-        !languageCodes.has(item.language)
+        item.language.trim().length === 0 ||
+        item.language.trim().length > MAX_LANGUAGE_LENGTH
     ) {
-        invalid("invalid language code.");
+        invalid(
+            `language must contain 1–${MAX_LANGUAGE_LENGTH} characters.`
+        );
     }
 
     return {
         scryfallId: item.scryfallId.trim().toLowerCase(),
         quantity: item.quantity,
-        condition: item.condition,
+        condition: item.condition.trim(),
         finish: item.finish,
-        language: item.language,
+        language: item.language.trim(),
     };
 }
 
@@ -253,7 +257,7 @@ export async function POST(request: NextRequest) {
             if (existing) {
                 existing.quantity += item.quantity;
 
-                if (existing.quantity > 4294967295) {
+                if (existing.quantity > MAX_QUANTITY) {
                     throw new ValidationError(
                         "Combined quantity is too large."
                     );
@@ -352,7 +356,7 @@ export async function POST(request: NextRequest) {
                         ? currentQuantity + item.quantity
                         : currentQuantity - item.quantity;
 
-                if (newQuantity > 4294967295) {
+                if (newQuantity > MAX_QUANTITY) {
                     throw new ValidationError(
                         "Purchase would exceed the quantity limit."
                     );
