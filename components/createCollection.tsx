@@ -51,13 +51,16 @@ export default function CreateCollection() {
     }
 
     return (
-        <section className="mt-6">
+        <div>
             <form
                 onSubmit={handleSubmit}
+                aria-busy={busy}
                 className="flex flex-col gap-3 sm:flex-row sm:items-end"
             >
-                <label className="flex flex-1 flex-col gap-2">
-                    New collection name
+                <label className="flex min-w-0 flex-1 flex-col gap-2">
+                    <span className="text-sm font-medium text-muted">
+                        New collection name
+                    </span>
 
                     <input
                         type="text"
@@ -68,24 +71,33 @@ export default function CreateCollection() {
                         maxLength={100}
                         required
                         disabled={busy}
-                        className="rounded-lg border border-zinc-300 bg-white p-3 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                        className="w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted focus:border-teal disabled:cursor-not-allowed disabled:opacity-50"
                     />
                 </label>
 
                 <button
                     type="submit"
                     disabled={busy || !name.trim()}
-                    className="rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-accent/50 bg-surface px-5 py-3 font-semibold text-accent transition-colors enabled:hover:border-accent enabled:hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
+                    {!busy && (
+                        <span aria-hidden="true" className="text-lg leading-none">
+                            +
+                        </span>
+                    )}
+
                     {busy ? "Creating…" : "Create Collection"}
                 </button>
             </form>
 
             {error && (
-                <p role="alert" className="mt-3 text-red-500">
+                <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm leading-6 text-red-300"
+                >
                     {error}
                 </p>
             )}
-        </section>
+        </div>
     );
 }

@@ -15,7 +15,7 @@ interface Props {
     title: string;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 const usd = new Intl.NumberFormat("en-US", {
     style: "currency",

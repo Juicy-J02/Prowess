@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { loadScryfallPrices } from "@/lib/server/scryfallPrices";
-
 import { db } from "@/lib/server/database";
 import {
     SESSION_COOKIE,
@@ -31,11 +30,17 @@ interface TransactionRow extends RowDataPacket {
     date: string;
 }
 
+interface AccountCard extends RowDataPacket {
+    scryfall_id: string;
+    finish: string;
+    quantity: number | string;
+}
+
 const primaryButton =
-    "inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 font-medium text-white transition-colors hover:bg-blue-700";
+    "inline-flex items-center justify-center rounded-xl border border-accent bg-accent px-5 py-3 font-semibold text-background transition-colors hover:bg-[#ffe7a1] hover:text-background";
 
 const secondaryButton =
-    "inline-flex items-center justify-center rounded-lg border border-zinc-300 px-5 py-3 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900";
+    "inline-flex items-center justify-center rounded-xl border border-border bg-surface px-5 py-3 font-semibold text-foreground transition-colors hover:border-accent hover:bg-surface-hover hover:text-foreground";
 
 function usd(cents: number) {
     return new Intl.NumberFormat("en-US", {
@@ -66,23 +71,17 @@ function StatCard({
     return (
         <Link
             href={href}
-            className="rounded-xl border border-zinc-200 p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+            className="block rounded-xl border border-border bg-surface p-5 text-foreground transition-colors hover:border-accent hover:bg-surface-hover hover:text-foreground"
         >
-            <h2 className="text-sm text-zinc-500">
+            <h2 className="text-sm text-muted">
                 {label}
             </h2>
 
-            <p className="mt-3 text-3xl font-semibold">
+            <p className="mt-3 break-words text-3xl font-semibold">
                 {value}
             </p>
         </Link>
     );
-}
-
-interface AccountCard extends RowDataPacket {
-    scryfall_id: string;
-    finish: string;
-    quantity: number | string;
 }
 
 async function AccountValue({ userId }: { userId: number }) {
@@ -133,46 +132,41 @@ async function AccountValue({ userId }: { userId: number }) {
     return (
         <Link
             href="/value?collection=all"
-            className={`block rounded-2xl border p-8 transition-colors ${totalCents > 0
-                ? "border-green-300 bg-green-50 hover:bg-green-100 dark:border-green-800 dark:bg-green-950/30 dark:hover:bg-green-950/50"
-                : totalCents < 0
-                    ? "border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50"
-                    : "border-zinc-300 bg-zinc-50 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                }`}
+            className="group block rounded-2xl border border-accent/50 bg-[linear-gradient(135deg,#103348,#061827)] p-6 text-foreground shadow-xl shadow-black/20 transition-colors hover:border-accent hover:text-foreground sm:p-8"
         >
-            <h2 className="text-lg font-medium text-zinc-600 dark:text-zinc-300">
-                Total Account Value
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-medium text-foreground">
+                    Total Account Value
+                </h2>
+
+                <span className="badge">
+                    All collections · USD
+                </span>
+            </div>
 
             <p
-                className={`mt-3 text-4xl font-bold tracking-tight sm:text-5xl ${totalCents > 0
-                    ? "text-green-600 dark:text-green-400"
-                    : totalCents < 0
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-zinc-600 dark:text-zinc-400"
+                className={`mt-4 break-words text-4xl font-bold tracking-tight sm:text-5xl ${totalCents > 0
+                        ? "text-green-400"
+                        : totalCents < 0
+                            ? "text-red-400"
+                            : "text-accent"
                     }`}
             >
                 {usd(totalCents)}
             </p>
 
-            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-muted">
                 Current USD reference value across all your collections.
                 {unpricedCopies > 0 && (
                     <>
-                        {" "}{unpricedCopies} card copies without prices
+                        {" "}
+                        {unpricedCopies} card copies without prices
                         are excluded.
                     </>
                 )}
             </p>
 
-            <span
-                className={`mt-5 inline-block text-sm font-medium ${totalCents > 0
-                        ? "text-green-700 dark:text-green-400"
-                        : totalCents < 0
-                            ? "text-red-700 dark:text-red-400"
-                            : "text-zinc-700 dark:text-zinc-400"
-                    }`}
-            >
+            <span className="mt-6 inline-block text-sm font-semibold text-accent group-hover:underline">
                 View value history →
             </span>
         </Link>
@@ -181,10 +175,10 @@ async function AccountValue({ userId }: { userId: number }) {
 
 export default function Home() {
     return (
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 text-black dark:text-white">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 text-foreground">
             <Suspense
                 fallback={
-                    <p role="status" className="text-zinc-500">
+                    <p role="status" className="text-muted">
                         Loading…
                     </p>
                 }
@@ -306,7 +300,7 @@ async function HomeContent() {
         <div className="space-y-10">
             <header className="flex flex-wrap items-center justify-between gap-6">
                 <div>
-                    <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    <p className="text-sm font-medium text-accent">
                         Your dashboard
                     </p>
 
@@ -314,7 +308,7 @@ async function HomeContent() {
                         Welcome back, {user.username}.
                     </h1>
 
-                    <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+                    <p className="mt-3 text-muted">
                         Manage your cards, record transactions, and
                         follow market values.
                     </p>
@@ -354,12 +348,13 @@ async function HomeContent() {
                 fallback={
                     <div
                         role="status"
-                        className="rounded-2xl border border-blue-200 bg-blue-50 p-8 dark:border-blue-900 dark:bg-blue-950/30"
+                        className="rounded-2xl border border-border bg-surface p-8"
                     >
                         <h2 className="text-lg font-medium">
                             Total Account Value
                         </h2>
-                        <p className="mt-3 text-zinc-500">
+
+                        <p className="mt-3 text-muted">
                             Loading account value…
                         </p>
                     </div>
@@ -368,7 +363,7 @@ async function HomeContent() {
                 <AccountValue userId={user.id} />
             </Suspense>
 
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
                 Purchase and sale totals include {transactionCount}{" "}
                 recorded USD transactions. These totals are cash
                 activity, not profit. Imported cards may have
@@ -376,12 +371,12 @@ async function HomeContent() {
             </p>
 
             {collectionCount === 0 && (
-                <section className="rounded-xl border border-dashed border-blue-300 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-950/30">
+                <section className="rounded-xl border border-dashed border-accent/50 bg-surface p-6">
                     <h2 className="text-xl font-semibold">
                         Start your first collection
                     </h2>
 
-                    <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+                    <p className="mt-2 text-muted">
                         Create a collection, open it, and import a
                         ManaBox CSV to add your cards.
                     </p>
@@ -423,19 +418,19 @@ async function HomeContent() {
 
                     <Link
                         href="/transactions"
-                        className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                        className="text-sm text-accent hover:underline"
                     >
                         View all transactions →
                     </Link>
                 </div>
 
                 {recentTransactions.length === 0 ? (
-                    <div className="rounded-xl border border-dashed p-6">
+                    <div className="rounded-xl border border-dashed border-border bg-surface p-6">
                         <p className="font-medium">
                             No transactions recorded yet.
                         </p>
 
-                        <p className="mt-2 text-sm text-zinc-500">
+                        <p className="mt-2 text-sm text-muted">
                             Record a purchase or sale to start
                             tracking your activity.
                         </p>
@@ -446,14 +441,14 @@ async function HomeContent() {
                             <li key={transaction.id}>
                                 <Link
                                     href={`/value?transaction=${transaction.id}`}
-                                    className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                                    className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-5 text-foreground transition-colors hover:border-accent hover:bg-surface-hover hover:text-foreground"
                                 >
                                     <div className="min-w-0">
                                         <h3 className="break-words font-medium">
                                             {transaction.name}
                                         </h3>
 
-                                        <p className="mt-1 text-sm text-zinc-500">
+                                        <p className="mt-1 text-sm text-muted">
                                             {transaction.type === "sale"
                                                 ? "Sale"
                                                 : "Purchase"}
@@ -473,7 +468,7 @@ async function HomeContent() {
                                             )}
                                         </p>
 
-                                        <p className="mt-1 text-xs text-zinc-500">
+                                        <p className="mt-1 text-xs text-muted">
                                             View value →
                                         </p>
                                     </div>
@@ -499,17 +494,17 @@ function Shortcut({
     return (
         <Link
             href={href}
-            className="flex flex-col rounded-xl border border-zinc-200 p-6 transition-colors hover:border-blue-500 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-blue-500 dark:hover:bg-zinc-900"
+            className="flex flex-col rounded-xl border border-border bg-surface p-6 text-foreground transition-colors hover:border-accent hover:bg-surface-hover hover:text-foreground"
         >
             <h2 className="text-xl font-semibold">
                 {title}
             </h2>
 
-            <p className="mt-3 flex-1 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+            <p className="mt-3 flex-1 text-sm leading-6 text-muted">
                 {description}
             </p>
 
-            <span className="mt-5 text-sm font-medium text-blue-600 dark:text-blue-400">
+            <span className="mt-5 text-sm font-medium text-accent">
                 Open →
             </span>
         </Link>
@@ -520,16 +515,16 @@ function Welcome() {
     return (
         <div className="space-y-14 py-8">
             <section className="max-w-3xl">
-                <p className="font-semibold text-blue-600 dark:text-blue-400">
+                <p className="font-semibold text-accent">
                     Prowess
                 </p>
 
                 <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-                    Know your collection.
+                    Know your collection.{" "}
                     Track its value.
                 </h1>
 
-                <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+                <p className="mt-6 max-w-2xl text-lg leading-8 text-muted">
                     Organize your Magic cards, record purchases and
                     sales, and follow how their reference market
                     values change over time.
@@ -551,7 +546,7 @@ function Welcome() {
                     </Link>
                 </div>
 
-                <p className="mt-3 text-sm text-zinc-500">
+                <p className="mt-3 text-sm text-muted">
                     New here? Choose Register on the sign-in page.
                 </p>
             </section>
@@ -584,12 +579,12 @@ function WelcomeFeature({
     description: string;
 }) {
     return (
-        <section className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
+        <section className="rounded-xl border border-border bg-surface p-6">
             <h2 className="text-xl font-semibold">
                 {title}
             </h2>
 
-            <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+            <p className="mt-3 text-sm leading-6 text-muted">
                 {description}
             </p>
         </section>

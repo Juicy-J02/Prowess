@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import Form from "next/form";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
@@ -49,21 +50,45 @@ const orders = {
 };
 
 const selectClass =
-    "rounded-lg border border-zinc-300 bg-white p-3 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white";
+    "w-full rounded-xl border border-border bg-background p-3 text-foreground";
+
+const paginationClass =
+    "inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-teal hover:bg-surface-hover hover:text-foreground";
 
 function money(cents: number) {
-    return `$${(cents / 100).toFixed(2)}`;
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+    }).format(cents / 100);
 }
 
 export default function TransactionsPage({ searchParams }: Props) {
     return (
-        <main className="mx-auto w-full max-w-5xl px-6 py-8">
-            <h1 className="text-3xl font-semibold">
-                Transactions
-            </h1>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 text-foreground sm:px-6">
+            <header>
+                <p className="text-sm font-semibold text-accent">
+                    Your activity
+                </p>
+
+                <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">
+                    Transactions
+                </h1>
+
+                <p className="mt-3 max-w-2xl text-muted">
+                    Record purchases and sales, manage your inventory,
+                    and explore your transaction history.
+                </p>
+            </header>
 
             <Suspense
-                fallback={<p className="mt-6">Loading transactions…</p>}
+                fallback={
+                    <div
+                        role="status"
+                        className="panel mt-8 text-muted"
+                    >
+                        Loading transactions…
+                    </div>
+                }
             >
                 <UserTransactions searchParams={searchParams} />
             </Suspense>
@@ -138,7 +163,7 @@ async function UserTransactions({ searchParams }: Props) {
 
     const requestedPage =
         typeof params.page === "string" &&
-        /^[1-9]\d*$/.test(params.page)
+            /^[1-9]\d*$/.test(params.page)
             ? Number(params.page)
             : 1;
 
@@ -181,11 +206,22 @@ async function UserTransactions({ searchParams }: Props) {
     }
 
     return (
-        <div className="mt-6 space-y-10">
-            <section className="space-y-4">
-                <h2 className="text-2xl font-semibold">
-                    Record Transaction
-                </h2>
+        <div className="mt-8 space-y-8">
+            <section className="panel">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-2xl font-semibold">
+                        Record Transaction
+                    </h2>
+
+                    <span className="badge">
+                        Inventory updates automatically
+                    </span>
+                </div>
+
+                <p className="mt-2 text-sm text-muted">
+                    Add a purchase or record a sale from one of your
+                    collections.
+                </p>
 
                 <TransactionForm
                     collections={collections.map(({ id, name }) => ({
@@ -195,25 +231,33 @@ async function UserTransactions({ searchParams }: Props) {
                 />
             </section>
 
-            <section className="space-y-5 border-t pt-8">
-                <div>
-                    <h2 className="text-2xl font-semibold">
-                        Transaction History
-                    </h2>
+            <section className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 className="text-2xl font-semibold">
+                            Transaction History
+                        </h2>
 
-                    <p className="mt-2 text-sm text-zinc-500">
-                        USD purchases and sales. Select a transaction
-                        to view its market value and price history.
-                    </p>
+                        <p className="mt-2 text-sm text-muted">
+                            USD purchases and sales. Select a transaction
+                            to view its market value and price history.
+                        </p>
+                    </div>
+
+                    <span className="badge">
+                        {totalTransactions} matching
+                    </span>
                 </div>
 
-                <form
+                <Form
                     action="/transactions"
-                    method="GET"
-                    className="flex flex-wrap items-end gap-4"
+                    scroll={false}
+                    className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface p-4 sm:p-5"
                 >
-                    <label className="flex flex-col gap-2">
-                        Type
+                    <label className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-44">
+                        <span className="text-sm font-medium text-muted">
+                            Type
+                        </span>
 
                         <select
                             key={`type-${type}`}
@@ -221,14 +265,22 @@ async function UserTransactions({ searchParams }: Props) {
                             defaultValue={type}
                             className={selectClass}
                         >
-                            <option value="all">All transactions</option>
-                            <option value="purchase">Purchases</option>
-                            <option value="sale">Sales</option>
+                            <option value="all">
+                                All transactions
+                            </option>
+                            <option value="purchase">
+                                Purchases
+                            </option>
+                            <option value="sale">
+                                Sales
+                            </option>
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-2">
-                        Sort
+                    <label className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-44">
+                        <span className="text-sm font-medium text-muted">
+                            Sort
+                        </span>
 
                         <select
                             key={`sort-${sort}`}
@@ -236,40 +288,53 @@ async function UserTransactions({ searchParams }: Props) {
                             defaultValue={sort}
                             className={selectClass}
                         >
-                            <option value="newest">Newest first</option>
-                            <option value="oldest">Oldest first</option>
+                            <option value="newest">
+                                Newest first
+                            </option>
+                            <option value="oldest">
+                                Oldest first
+                            </option>
                             <option value="amount_high">
                                 Highest amount
                             </option>
                             <option value="amount_low">
                                 Lowest amount
                             </option>
-                            <option value="name">Name A–Z</option>
+                            <option value="name">
+                                Name A–Z
+                            </option>
                         </select>
                     </label>
 
                     <button
                         type="submit"
-                        className="rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700"
+                        className="btn-primary px-5 py-3"
                     >
                         Apply
                     </button>
 
                     <Link
                         href="/transactions"
-                        className="px-2 py-3 underline"
+                        className="px-2 py-3 text-sm text-muted underline hover:text-accent"
                     >
                         Reset
                     </Link>
-                </form>
+                </Form>
 
                 {transactions.length === 0 ? (
-                    <p className="rounded-lg border border-dashed p-6 text-zinc-500">
-                        No matching transactions.
-                    </p>
+                    <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+                        <h3 className="font-semibold">
+                            No matching transactions
+                        </h3>
+
+                        <p className="mt-2 text-sm text-muted">
+                            Record a transaction above or adjust your
+                            filters to see more activity.
+                        </p>
+                    </div>
                 ) : (
                     <>
-                        <p className="text-sm text-zinc-500">
+                        <p className="text-sm text-muted">
                             Showing {offset + 1}–
                             {Math.min(
                                 offset + PAGE_SIZE,
@@ -278,25 +343,29 @@ async function UserTransactions({ searchParams }: Props) {
                             of {totalTransactions} transactions
                         </p>
 
-                        <div className="overflow-x-auto rounded-xl border">
+                        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-zinc-100 dark:bg-zinc-900">
+                                <thead>
                                     <tr>
                                         <th scope="col" className="p-3">
                                             Date (UTC)
                                         </th>
+
                                         <th scope="col" className="p-3">
                                             Transaction
                                         </th>
+
                                         <th scope="col" className="p-3">
                                             Type
                                         </th>
+
                                         <th
                                             scope="col"
                                             className="p-3 text-right"
                                         >
                                             Copies
                                         </th>
+
                                         <th
                                             scope="col"
                                             className="p-3 text-right"
@@ -310,38 +379,50 @@ async function UserTransactions({ searchParams }: Props) {
                                     {transactions.map((transaction) => (
                                         <tr
                                             key={transaction.id}
-                                            className="border-t"
+                                            className="border-t border-border transition-colors hover:bg-teal/5"
                                         >
-                                            <td className="whitespace-nowrap p-3">
+                                            <td className="whitespace-nowrap p-3 text-muted">
                                                 {transaction.occurred_at_sql}
                                             </td>
 
                                             <td className="p-3">
                                                 <Link
                                                     href={`/value?transaction=${transaction.id}`}
-                                                    className="font-medium text-blue-600 hover:underline"
+                                                    className="font-medium text-accent hover:underline"
                                                 >
                                                     {transaction.name}
                                                 </Link>
 
-                                                <span className="ml-2 text-zinc-500">
+                                                <span className="ml-2 text-xs text-muted">
                                                     #{transaction.id}
                                                 </span>
                                             </td>
 
                                             <td className="p-3">
-                                                {transaction.type === "sale"
-                                                    ? "Sale"
-                                                    : "Purchase"}
+                                                <span
+                                                    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${transaction.type === "sale"
+                                                            ? "border-teal/30 bg-teal/10 text-teal"
+                                                            : "border-accent/30 bg-accent/10 text-accent"
+                                                        }`}
+                                                >
+                                                    {transaction.type === "sale"
+                                                        ? "Sale"
+                                                        : "Purchase"}
+                                                </span>
                                             </td>
 
-                                            <td className="p-3 text-right">
+                                            <td className="p-3 text-right tabular-nums">
                                                 {Number(
                                                     transaction.copy_count
                                                 )}
                                             </td>
 
-                                            <td className="whitespace-nowrap p-3 text-right">
+                                            <td
+                                                className={`whitespace-nowrap p-3 text-right font-semibold tabular-nums ${transaction.type === "sale"
+                                                        ? "text-green-400"
+                                                        : "text-red-400"
+                                                    }`}
+                                            >
                                                 {transaction.type === "sale"
                                                     ? "+"
                                                     : "−"}
@@ -360,32 +441,42 @@ async function UserTransactions({ searchParams }: Props) {
                         {totalPages > 1 && (
                             <nav
                                 aria-label="Transaction pages"
-                                className="flex items-center justify-between gap-4"
+                                className="flex flex-wrap items-center justify-between gap-4"
                             >
                                 {currentPage > 1 ? (
                                     <Link
                                         href={pageHref(currentPage - 1)}
-                                        className="rounded-lg border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                        className={paginationClass}
                                     >
                                         Previous
                                     </Link>
                                 ) : (
-                                    <span />
+                                    <span
+                                        aria-disabled="true"
+                                        className="rounded-xl border border-border px-4 py-2 text-sm text-muted opacity-40"
+                                    >
+                                        Previous
+                                    </span>
                                 )}
 
-                                <span className="text-sm">
+                                <span className="text-sm text-muted">
                                     Page {currentPage} of {totalPages}
                                 </span>
 
                                 {currentPage < totalPages ? (
                                     <Link
                                         href={pageHref(currentPage + 1)}
-                                        className="rounded-lg border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                        className={paginationClass}
                                     >
                                         Next
                                     </Link>
                                 ) : (
-                                    <span />
+                                    <span
+                                        aria-disabled="true"
+                                        className="rounded-xl border border-border px-4 py-2 text-sm text-muted opacity-40"
+                                    >
+                                        Next
+                                    </span>
                                 )}
                             </nav>
                         )}

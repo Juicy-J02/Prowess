@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   description: "Track your cards, transactions, and collection value.",
 };
 
+const navigationLink =
+  "nav-link rounded-lg px-3 py-2 text-sm font-medium transition-colors";
+
 async function Timestamp() {
   "use cache";
 
@@ -43,9 +46,11 @@ async function AccountLink() {
   return (
     <Link
       href="/signin"
-      className="inline-flex items-center justify-center rounded-lg border border-zinc-300 px-4 py-2 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+      className="account-link inline-flex max-w-48 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-colors"
     >
-      {user ? user.username : "Sign In"}
+      <span className="truncate">
+        {user ? user.username : "Sign In"}
+      </span>
     </Link>
   );
 }
@@ -58,21 +63,65 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
-        <header className="border-b px-6 py-4">
-          <nav className="mx-auto flex max-w-6xl items-center gap-6">
-            <Link href="/" className="text-xl font-bold">
-              Prowess
+      <body className="flex min-h-full flex-col text-foreground">
+        <a
+          href="#main-content"
+          className="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
+        >
+          Skip to content
+        </a>
+
+        <header className="site-header backdrop-blur-xl">
+          <nav
+            aria-label="Main navigation"
+            className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4 sm:px-6"
+          >
+            <Link
+              href="/"
+              className="group inline-flex items-center gap-3"
+            >
+              <span
+                aria-hidden="true"
+                className="brand-mark flex h-10 w-10 items-center justify-center rounded-xl text-lg font-bold"
+              >
+                P
+              </span>
+
+              <span className="brand-name text-xl font-bold tracking-tight transition-colors">
+                Prowess
+              </span>
             </Link>
 
-            <Link href="/transactions">Transactions</Link>
-            <Link href="/value">Value</Link>
-            <Link href="/collection">Collection</Link>
+            <div className="order-3 flex w-full flex-wrap items-center gap-1 border-t border-border pt-3 sm:order-none sm:w-auto sm:border-0 sm:pt-0">
+              <Link
+                href="/transactions"
+                className={navigationLink}
+              >
+                Transactions
+              </Link>
 
-            <div className="ml-auto">
+              <Link
+                href="/value"
+                className={navigationLink}
+              >
+                Value Tracker
+              </Link>
+
+              <Link
+                href="/collection"
+                className={navigationLink}
+              >
+                Collections
+              </Link>
+            </div>
+
+            <div className="shrink-0">
               <Suspense
                 fallback={
-                  <span className="text-sm text-zinc-500">
+                  <span
+                    role="status"
+                    className="inline-flex rounded-xl border border-border px-4 py-2 text-sm text-muted"
+                  >
                     Loading…
                   </span>
                 }
@@ -83,12 +132,20 @@ export default function RootLayout({
           </nav>
         </header>
 
-        <div className="flex flex-1 flex-col">
+        <div
+          id="main-content"
+          tabIndex={-1}
+          className="flex flex-1 flex-col"
+        >
           {children}
         </div>
 
-        <footer className="border-t px-6 py-4 text-center text-sm">
-          © <Timestamp /> Prowess
+        <footer className="site-footer mt-12">
+          <div className="mx-auto flex max-w-6xl items-center justify-center px-6 py-6 text-center text-sm text-muted">
+            <p>
+              © Prowess
+            </p>
+          </div>
         </footer>
       </body>
     </html>

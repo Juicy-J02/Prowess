@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
+
 import { db } from "@/lib/server/database";
 import {
     SESSION_COOKIE,
@@ -12,6 +13,9 @@ interface TransactionItem {
     condition: string;
     finish: string;
     language: string;
+    cardName: string | null;
+    setCode: string | null;
+    collectorNumber: string | null;
 }
 
 interface OwnedCard extends RowDataPacket {
@@ -30,7 +34,11 @@ const finishes = new Set(["nonfoil", "foil", "etched"]);
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function parseItem(value: unknown, index: number): TransactionItem {
+function parseItem(
+    value: unknown,
+    index: number,
+    type: "purchase" | "sale"
+): TransactionItem {
     function invalid(message: string): never {
         throw new ValidationError(`Item ${index + 1}: ${message}`);
     }
@@ -88,12 +96,52 @@ function parseItem(value: unknown, index: number): TransactionItem {
         );
     }
 
+    let cardName: string | null = null;
+    let setCode: string | null = null;
+    let collectorNumber: string | null = null;
+
+    // Purchases must include the selected printing's display details.
+    // Sales use the card already stored in the collection.
+    if (type === "purchase") {
+        if (
+            typeof item.cardName !== "string" ||
+            item.cardName.trim().length === 0 ||
+            item.cardName.trim().length > 255
+        ) {
+            invalid(
+                "select a printing with a valid card name."
+            );
+        }
+
+        if (
+            typeof item.setCode !== "string" ||
+            !/^[a-z0-9]{1,20}$/i.test(item.setCode.trim())
+        ) {
+            invalid("provide a valid set code.");
+        }
+
+        if (
+            typeof item.collectorNumber !== "string" ||
+            item.collectorNumber.trim().length === 0 ||
+            item.collectorNumber.trim().length > 100
+        ) {
+            invalid("provide a valid collector number.");
+        }
+
+        cardName = item.cardName.trim();
+        setCode = item.setCode.trim().toLowerCase();
+        collectorNumber = item.collectorNumber.trim();
+    }
+
     return {
         scryfallId: item.scryfallId.trim().toLowerCase(),
         quantity: item.quantity,
         condition: item.condition.trim(),
         finish: item.finish,
         language: item.language.trim(),
+        cardName,
+        setCode,
+        collectorNumber,
     };
 }
 
@@ -162,10 +210,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Money is sent as a decimal string, such as "25.50".
         if (
             typeof input.totalAmount !== "string" ||
-            !/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/.test(input.totalAmount)
+            !/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/.test(
+                input.totalAmount
+            )
         ) {
             throw new ValidationError(
                 'Provide totalAmount as a decimal string, such as "25.50".'
@@ -176,7 +225,9 @@ export async function POST(request: NextRequest) {
             input.currency !== undefined &&
             input.currency !== "USD"
         ) {
-            throw new ValidationError("Only USD is supported for now.");
+            throw new ValidationError(
+                "Only USD is supported for now."
+            );
         }
 
         if (
@@ -184,7 +235,9 @@ export async function POST(request: NextRequest) {
             input.items.length === 0 ||
             input.items.length > 1000
         ) {
-            throw new ValidationError("Provide 1–1000 card items.");
+            throw new ValidationError(
+                "Provide 1–1000 card items."
+            );
         }
 
         if (
@@ -221,7 +274,9 @@ export async function POST(request: NextRequest) {
                     input.occurredAt.slice(0, 19) ||
                 occurredAt.getUTCFullYear() < 1000
             ) {
-                throw new ValidationError("Invalid transaction date.");
+                throw new ValidationError(
+                    "Invalid transaction date."
+                );
             }
         }
 
@@ -229,6 +284,7 @@ export async function POST(request: NextRequest) {
         const name = input.name.trim();
         const type = input.type;
         const totalAmount = input.totalAmount;
+
         const notes =
             typeof input.notes === "string"
                 ? input.notes.trim()
@@ -239,11 +295,11 @@ export async function POST(request: NextRequest) {
             .slice(0, 19)
             .replace("T", " ");
 
-        // Combine duplicate card variants before changing inventory.
+        // Combine duplicate variants before changing inventory.
         const groupedItems = new Map<string, TransactionItem>();
 
         for (const [index, value] of input.items.entries()) {
-            const item = parseItem(value, index);
+            const item = parseItem(value, index, type);
 
             const key = JSON.stringify([
                 item.scryfallId,
@@ -273,7 +329,7 @@ export async function POST(request: NextRequest) {
         try {
             await connection.beginTransaction();
 
-            // Check ownership and lock the collection during the update.
+            // Verify ownership and lock the collection.
             const [collections] =
                 await connection.execute<RowDataPacket[]>(
                     `SELECT id
@@ -337,6 +393,7 @@ export async function POST(request: NextRequest) {
                     );
 
                 const ownedCard = ownedCards[0];
+
                 const currentQuantity = Number(
                     ownedCard?.quantity ?? 0
                 );
@@ -368,7 +425,25 @@ export async function POST(request: NextRequest) {
                             "DELETE FROM collection_cards WHERE id = ?",
                             [ownedCard.id]
                         );
+                    } else if (type === "purchase") {
+                        // Save display details when adding more copies.
+                        await connection.execute(
+                            `UPDATE collection_cards
+                             SET quantity = ?,
+                                 card_name = ?,
+                                 set_code = ?,
+                                 collector_number = ?
+                             WHERE id = ?`,
+                            [
+                                newQuantity,
+                                item.cardName,
+                                item.setCode,
+                                item.collectorNumber,
+                                ownedCard.id,
+                            ]
+                        );
                     } else {
+                        // Sales preserve existing display details.
                         await connection.execute(
                             `UPDATE collection_cards
                              SET quantity = ?
@@ -384,9 +459,12 @@ export async function POST(request: NextRequest) {
                             quantity,
                             card_condition,
                             finish,
-                            language
+                            language,
+                            card_name,
+                            set_code,
+                            collector_number
                         )
-                        VALUES (?, ?, ?, ?, ?, ?)`,
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             collectionId,
                             item.scryfallId,
@@ -394,6 +472,9 @@ export async function POST(request: NextRequest) {
                             item.condition,
                             item.finish,
                             item.language,
+                            item.cardName,
+                            item.setCode,
+                            item.collectorNumber,
                         ]
                     );
                 }
@@ -436,7 +517,9 @@ export async function POST(request: NextRequest) {
             },
             {
                 status: 201,
-                headers: { "Cache-Control": "no-store" },
+                headers: {
+                    "Cache-Control": "no-store",
+                },
             }
         );
     } catch (error) {

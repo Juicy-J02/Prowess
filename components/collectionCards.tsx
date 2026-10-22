@@ -23,7 +23,13 @@ interface Props {
 const PAGE_SIZE = 24;
 
 const inputClass =
-    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white";
+    "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-teal";
+
+const labelClass =
+    "flex min-w-0 flex-col gap-2 text-sm font-medium text-muted";
+
+const buttonClass =
+    "inline-flex items-center justify-center rounded-xl border border-accent/40 bg-surface px-4 py-2 text-sm font-semibold text-accent transition-colors enabled:hover:border-accent enabled:hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function CollectionCards({ cards }: Props) {
     const [search, setSearch] = useState("");
@@ -134,6 +140,14 @@ export default function CollectionCards({ cards }: Props) {
         (card) => !card.detailsLoaded
     );
 
+    const activeFilterCount = [
+        search.trim(),
+        setCode,
+        condition,
+        finish,
+        language,
+    ].filter(Boolean).length;
+
     function clearFilters() {
         setSearch("");
         setSetCode("");
@@ -146,21 +160,43 @@ export default function CollectionCards({ cards }: Props) {
 
     if (cards.length === 0) {
         return (
-            <p className="rounded-lg border border-dashed p-6">
-                This collection has no cards yet. Import cards from
-                the collections page to get started.
-            </p>
+            <div className="rounded-xl border border-dashed border-teal/30 bg-teal/5 p-8 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                    No cards yet
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-muted">
+                    Open the Import cards section to add cards
+                    from a ManaBox CSV.
+                </p>
+            </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                {totalCopies} copies across {cards.length} variants
-            </p>
+        <div className="space-y-6 text-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted">
+                    <span className="font-semibold text-foreground">
+                        {totalCopies.toLocaleString("en-US")}
+                    </span>{" "}
+                    copies across{" "}
+                    <span className="font-semibold text-foreground">
+                        {cards.length.toLocaleString("en-US")}
+                    </span>{" "}
+                    variants
+                </p>
+
+                <span className="badge">
+                    {PAGE_SIZE} cards per page
+                </span>
+            </div>
 
             {missingDetails && (
-                <p role="status" className="text-sm text-amber-600">
+                <p
+                    role="status"
+                    className="rounded-xl border border-accent/25 bg-accent/5 p-4 text-sm leading-6 text-accent"
+                >
                     Some card details could not be loaded. Their IDs
                     are shown instead, and name or set searches may
                     be incomplete.
@@ -169,10 +205,23 @@ export default function CollectionCards({ cards }: Props) {
 
             <section
                 aria-label="Filter collection cards"
-                className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                className="rounded-xl border border-border bg-background/60 p-4 sm:p-5"
             >
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold">
+                        Find your cards
+                    </h3>
+
+                    {activeFilterCount > 0 && (
+                        <span className="badge">
+                            {activeFilterCount} active{" "}
+                            {activeFilterCount === 1 ? "filter" : "filters"}
+                        </span>
+                    )}
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Search cards
 
                         <input
@@ -187,7 +236,7 @@ export default function CollectionCards({ cards }: Props) {
                         />
                     </label>
 
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Set
 
                         <select
@@ -208,7 +257,7 @@ export default function CollectionCards({ cards }: Props) {
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Condition
 
                         <select
@@ -229,7 +278,7 @@ export default function CollectionCards({ cards }: Props) {
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Finish
 
                         <select
@@ -250,7 +299,7 @@ export default function CollectionCards({ cards }: Props) {
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Language
 
                         <select
@@ -271,7 +320,7 @@ export default function CollectionCards({ cards }: Props) {
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-2">
+                    <label className={labelClass}>
                         Sort by
 
                         <select
@@ -290,28 +339,58 @@ export default function CollectionCards({ cards }: Props) {
                     </label>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="mt-4 text-sm underline"
-                >
-                    Clear filters
-                </button>
+                <div className="mt-5 border-t border-border pt-4">
+                    <button
+                        type="button"
+                        onClick={clearFilters}
+                        className={buttonClass}
+                    >
+                        Reset filters
+                    </button>
+                </div>
             </section>
 
-            <p
-                role="status"
-                className="text-sm text-zinc-600 dark:text-zinc-400"
-            >
-                {filteredCards.length} matching variants ·{" "}
-                {matchingCopies} copies
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <p role="status" className="text-sm text-muted">
+                    <span className="font-semibold text-teal">
+                        {filteredCards.length.toLocaleString("en-US")}
+                    </span>{" "}
+                    matching variants ·{" "}
+                    {matchingCopies.toLocaleString("en-US")} copies
+                </p>
+
+                {filteredCards.length > 0 && (
+                    <p className="text-xs text-muted">
+                        Showing {offset + 1}–
+                        {Math.min(
+                            offset + PAGE_SIZE,
+                            filteredCards.length
+                        )}
+                    </p>
+                )}
+            </div>
 
             {filteredCards.length === 0 ? (
-                <p>No cards match your filters.</p>
+                <div className="rounded-xl border border-dashed border-border bg-background/50 p-8 text-center">
+                    <h3 className="text-lg font-semibold">
+                        No matching cards
+                    </h3>
+
+                    <p className="mt-2 text-sm text-muted">
+                        Try a different search or reset your filters.
+                    </p>
+
+                    <button
+                        type="button"
+                        onClick={clearFilters}
+                        className={`${buttonClass} mt-5`}
+                    >
+                        Show all cards
+                    </button>
+                </div>
             ) : (
                 <>
-                    <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                    <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                         {visibleCards.map((card) => {
                             const normalizedFinish = card.finish
                                 .trim()
@@ -326,68 +405,94 @@ export default function CollectionCards({ cards }: Props) {
                             return (
                                 <li
                                     key={card.id}
-                                    className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                                    className="min-w-0 overflow-hidden rounded-2xl border border-border bg-background/70 p-3 shadow-lg shadow-black/10 transition-colors hover:border-accent/60"
                                 >
-                                    {card.imageUrl ? (
-                                        <div className="relative isolate mb-3 overflow-hidden rounded-lg">
-                                            <img
-                                                src={card.imageUrl}
-                                                alt={card.name}
-                                                loading="lazy"
-                                                decoding="async"
-                                                width={488}
-                                                height={680}
-                                                className="block h-auto w-full"
-                                            />
-
-                                            {isFoil && (
-                                                <div
-                                                    aria-hidden="true"
-                                                    className="pointer-events-none absolute inset-0 z-10"
-                                                    style={{
-                                                        background:
-                                                            "linear-gradient(115deg, rgba(255,80,160,0.3), rgba(140,90,255,0.3), rgba(50,200,255,0.3), rgba(100,255,150,0.3), rgba(255,220,80,0.3))",
-                                                        mixBlendMode:
-                                                            "screen",
-                                                    }}
+                                    <div className="relative mb-4">
+                                        {card.imageUrl ? (
+                                            <div className="relative isolate overflow-hidden rounded-xl">
+                                                <img
+                                                    src={card.imageUrl}
+                                                    alt={card.name}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    width={488}
+                                                    height={680}
+                                                    className="block h-auto w-full"
                                                 />
-                                            )}
 
-                                            {isEtched && (
-                                                <div
-                                                    aria-hidden="true"
-                                                    className="pointer-events-none absolute inset-0 z-10"
-                                                    style={{
-                                                        background:
-                                                            "repeating-linear-gradient(125deg, rgba(240,220,160,0.4) 0px, rgba(240,220,160,0.4) 1px, transparent 1px, transparent 4px)",
-                                                        mixBlendMode: "screen",
-                                                    }}
-                                                />
-                                            )}
+                                                {isFoil && (
+                                                    <div
+                                                        aria-hidden="true"
+                                                        className="pointer-events-none absolute inset-0 z-10"
+                                                        style={{
+                                                            background:
+                                                                "linear-gradient(115deg, rgba(255,80,160,0.3), rgba(140,90,255,0.3), rgba(50,200,255,0.3), rgba(100,255,150,0.3), rgba(255,220,80,0.3))",
+                                                            mixBlendMode:
+                                                                "screen",
+                                                        }}
+                                                    />
+                                                )}
+
+                                                {isEtched && (
+                                                    <div
+                                                        aria-hidden="true"
+                                                        className="pointer-events-none absolute inset-0 z-10"
+                                                        style={{
+                                                            background:
+                                                                "repeating-linear-gradient(125deg, rgba(240,220,160,0.4) 0px, rgba(240,220,160,0.4) 1px, transparent 1px, transparent 4px)",
+                                                            mixBlendMode:
+                                                                "screen",
+                                                        }}
+                                                    />
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="flex aspect-[488/680] items-center justify-center rounded-xl border border-border bg-surface p-4 text-center text-sm text-muted">
+                                                Image unavailable
+                                            </div>
+                                        )}
+
+                                        <span
+                                            aria-label={`${card.quantity} copies`}
+                                            className="absolute right-2 top-2 z-20 rounded-lg border border-accent/50 bg-background/95 px-2.5 py-1 text-sm font-bold tabular-nums text-accent shadow-lg"
+                                        >
+                                            {card.quantity}×
+                                        </span>
+                                    </div>
+
+                                    <div className="px-1 pb-1">
+                                        <h3 className="break-words text-base font-semibold leading-snug text-foreground">
+                                            {card.name}
+                                        </h3>
+
+                                        {card.setCode && (
+                                            <p className="mt-2 text-xs font-semibold tracking-wide text-accent">
+                                                {card.setCode.toUpperCase()}
+                                                {card.collectorNumber &&
+                                                    ` #${card.collectorNumber}`}
+                                            </p>
+                                        )}
+
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted">
+                                                {card.condition}
+                                            </span>
+
+                                            <span
+                                                className={`rounded-md border px-2 py-1 text-xs ${
+                                                    isFoil || isEtched
+                                                        ? "border-teal/30 bg-teal/10 text-teal"
+                                                        : "border-border bg-surface text-muted"
+                                                }`}
+                                            >
+                                                {card.finish}
+                                            </span>
+
+                                            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs uppercase text-muted">
+                                                {card.language}
+                                            </span>
                                         </div>
-                                    ) : (
-                                        <div className="mb-3 flex aspect-[488/680] items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-500 dark:bg-zinc-900">
-                                            Image unavailable
-                                        </div>
-                                    )}
-
-                                    <h2 className="break-words font-semibold">
-                                        {card.quantity}× {card.name}
-                                    </h2>
-
-                                    {card.setCode && (
-                                        <p className="mt-2 text-sm">
-                                            {card.setCode.toUpperCase()}
-                                            {card.collectorNumber &&
-                                                ` #${card.collectorNumber}`}
-                                        </p>
-                                    )}
-
-                                    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                                        {card.condition} · {card.finish}
-                                        {" · "}
-                                        {card.language}
-                                    </p>
+                                    </div>
                                 </li>
                             );
                         })}
@@ -396,7 +501,7 @@ export default function CollectionCards({ cards }: Props) {
                     {totalPages > 1 && (
                         <nav
                             aria-label="Card pages"
-                            className="flex items-center justify-between gap-4"
+                            className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5"
                         >
                             <button
                                 type="button"
@@ -404,13 +509,17 @@ export default function CollectionCards({ cards }: Props) {
                                 onClick={() =>
                                     setPage(currentPage - 1)
                                 }
-                                className="rounded-lg border px-4 py-2 hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-900"
+                                className={buttonClass}
                             >
                                 Previous
                             </button>
 
-                            <span className="text-sm">
-                                Page {currentPage} of {totalPages}
+                            <span className="text-sm text-muted">
+                                Page{" "}
+                                <span className="font-semibold text-foreground">
+                                    {currentPage}
+                                </span>{" "}
+                                of {totalPages}
                             </span>
 
                             <button
@@ -419,7 +528,7 @@ export default function CollectionCards({ cards }: Props) {
                                 onClick={() =>
                                     setPage(currentPage + 1)
                                 }
-                                className="rounded-lg border px-4 py-2 hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-900"
+                                className={buttonClass}
                             >
                                 Next
                             </button>

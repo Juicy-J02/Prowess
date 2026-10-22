@@ -38,14 +38,40 @@ interface Props {
 
 const PAGE_SIZE = 5;
 
+const buttonClass =
+    "inline-flex items-center justify-center rounded-xl border border-accent/50 bg-surface px-5 py-3 font-semibold text-accent transition-colors hover:border-accent hover:bg-surface-hover";
+
+const paginationClass =
+    "inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-teal hover:bg-surface-hover hover:text-foreground";
+
 export default function CollectionPage({ searchParams }: Props) {
     return (
-        <main className="mx-auto w-full max-w-3xl px-6 py-8">
-            <h1 className="text-3xl font-semibold">
-                Your Collections
-            </h1>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 text-foreground sm:px-6">
+            <header>
+                <p className="text-sm font-semibold text-accent">
+                    Your card library
+                </p>
 
-            <Suspense fallback={<p className="mt-6">Loading collections…</p>}>
+                <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">
+                    Your Collections
+                </h1>
+
+                <p className="mt-3 max-w-2xl text-muted">
+                    Keep your cards organized, explore your collections,
+                    and make room for your next find.
+                </p>
+            </header>
+
+            <Suspense
+                fallback={
+                    <div
+                        role="status"
+                        className="panel mt-8 text-muted"
+                    >
+                        Loading collections…
+                    </div>
+                }
+            >
                 <UserCollections searchParams={searchParams} />
             </Suspense>
         </main>
@@ -78,7 +104,6 @@ async function UserCollections({ searchParams }: Props) {
             ? Number(params.page)
             : 1;
 
-    // Load every collection for the import destination selector.
     const [allCollections] =
         await db.execute<CollectionOptionRow[]>(
             `SELECT id, name
@@ -88,7 +113,7 @@ async function UserCollections({ searchParams }: Props) {
             [user.id]
         );
 
-    // LOCATE treats the search as literal text, including % and _.
+    // Treat search characters such as % and _ as literal text.
     const filter = search
         ? "user_id = ? AND LOCATE(LOWER(?), LOWER(name)) > 0"
         : "user_id = ?";
@@ -117,7 +142,7 @@ async function UserCollections({ searchParams }: Props) {
 
     const offset = (currentPage - 1) * PAGE_SIZE;
 
-    // LIMIT and OFFSET come from validated server-calculated integers.
+    // LIMIT and OFFSET use validated server-calculated integers.
     const [collections] = await db.execute<CollectionRow[]>(
         `SELECT
             id,
@@ -147,165 +172,282 @@ async function UserCollections({ searchParams }: Props) {
     }
 
     return (
-        <div className="mt-6 space-y-8">
-            <section className="space-y-6">
-                <CreateCollection />
+        <div className="mt-8 space-y-8">
+            <section
+                aria-labelledby="create-collection-heading"
+                className="panel"
+            >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2
+                        id="create-collection-heading"
+                        className="text-xl font-semibold"
+                    >
+                        Start a new collection
+                    </h2>
 
-                {allCollections.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-zinc-300 p-6 dark:border-zinc-700">
-                        <p className="font-medium">
-                            You don’t have any collections yet.
-                        </p>
+                    <span className="badge">
+                        {allCollections.length}{" "}
+                        {allCollections.length === 1
+                            ? "collection"
+                            : "collections"}
+                    </span>
+                </div>
 
-                        <p className="mt-2 text-sm text-zinc-500">
-                            Create your first collection above, then
-                            import your cards.
-                        </p>
-                    </div>
-                ) : (
-                    <>
-                        <form
-                            action="/collection"
-                            method="GET"
-                            className="flex flex-wrap items-end gap-3"
-                        >
-                            <label className="flex min-w-0 flex-1 flex-col gap-2">
-                                Search collections
+                <p className="mt-2 text-sm text-muted">
+                    Give your collection a name, then open it to add
+                    or import cards.
+                </p>
 
-                                <input
-                                    key={search}
-                                    type="search"
-                                    name="search"
-                                    defaultValue={search}
-                                    placeholder="Enter a collection name"
-                                    maxLength={100}
-                                    className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                                />
-                            </label>
-
-                            <button
-                                type="submit"
-                                className="rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700"
-                            >
-                                Search
-                            </button>
-
-                            {search && (
-                                <Link
-                                    href="/collection"
-                                    className="px-2 py-3 underline"
-                                >
-                                    Clear
-                                </Link>
-                            )}
-                        </form>
-
-                        {matchingCollections === 0 ? (
-                            <p className="text-zinc-500">
-                                No collections match “{search}”.
-                            </p>
-                        ) : (
-                            <>
-                                <p className="text-sm text-zinc-500">
-                                    Showing {offset + 1}–
-                                    {Math.min(
-                                        offset + PAGE_SIZE,
-                                        matchingCollections
-                                    )}{" "}
-                                    of {matchingCollections} collections
-                                </p>
-
-                                <ul className="space-y-3">
-                                    {collections.map((collection) => {
-                                        const cardCount = Number(
-                                            collection.card_count
-                                        );
-
-                                        return (
-                                            <li
-                                                key={collection.id}
-                                                className="flex items-center gap-4 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700"
-                                            >
-                                                <Link
-                                                    href={`/collection/${collection.id}`}
-                                                    className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded px-1 py-2 hover:text-blue-600"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <p className="break-words font-medium">
-                                                            {collection.name}
-                                                        </p>
-
-                                                        <p className="mt-1 text-sm text-zinc-500">
-                                                            {cardCount}{" "}
-                                                            {cardCount === 1
-                                                                ? "card"
-                                                                : "cards"}
-                                                        </p>
-                                                    </div>
-
-                                                    <span
-                                                        aria-hidden="true"
-                                                        className="text-zinc-500"
-                                                    >
-                                                        →
-                                                    </span>
-                                                </Link>
-
-                                                <DeleteCollectionButton
-                                                    collectionId={
-                                                        collection.id
-                                                    }
-                                                    collectionName={
-                                                        collection.name
-                                                    }
-                                                />
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-
-                                {totalPages > 1 && (
-                                    <nav
-                                        aria-label="Collection pages"
-                                        className="flex items-center justify-between gap-4"
-                                    >
-                                        {currentPage > 1 ? (
-                                            <Link
-                                                href={pageHref(
-                                                    currentPage - 1
-                                                )}
-                                                className="rounded-lg border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                                            >
-                                                Previous
-                                            </Link>
-                                        ) : (
-                                            <span />
-                                        )}
-
-                                        <span className="text-sm">
-                                            Page {currentPage} of{" "}
-                                            {totalPages}
-                                        </span>
-
-                                        {currentPage < totalPages ? (
-                                            <Link
-                                                href={pageHref(
-                                                    currentPage + 1
-                                                )}
-                                                className="rounded-lg border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                                            >
-                                                Next
-                                            </Link>
-                                        ) : (
-                                            <span />
-                                        )}
-                                    </nav>
-                                )}
-                            </>
-                        )}
-                    </>
-                )}
+                <div className="mt-5">
+                    <CreateCollection />
+                </div>
             </section>
+
+            {allCollections.length === 0 ? (
+                <section className="rounded-2xl border border-dashed border-accent/30 bg-surface p-8 text-center sm:p-12">
+                    <span
+                        aria-hidden="true"
+                        className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-teal/30 bg-teal/10 text-teal"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            className="h-7 w-7"
+                        >
+                            <rect
+                                x="7"
+                                y="4"
+                                width="12"
+                                height="16"
+                                rx="2"
+                            />
+                            <path
+                                d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h1"
+                                strokeLinecap="round"
+                            />
+                            <path
+                                d="M11 12h4m-2-2v4"
+                                strokeLinecap="round"
+                            />
+                        </svg>
+                    </span>
+
+                    <h2 className="mt-5 text-xl font-semibold">
+                        Your collection starts here
+                    </h2>
+
+                    <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted">
+                        Create your first collection above, then add
+                        your cards or import a ManaBox CSV.
+                    </p>
+                </section>
+            ) : (
+                <section
+                    aria-labelledby="browse-collections-heading"
+                    className="space-y-5"
+                >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2
+                            id="browse-collections-heading"
+                            className="text-2xl font-semibold"
+                        >
+                            Browse collections
+                        </h2>
+
+                        {search && (
+                            <span className="badge">
+                                {matchingCollections} matching
+                            </span>
+                        )}
+                    </div>
+
+                    <form
+                        action="/collection"
+                        method="GET"
+                        className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4 sm:p-5"
+                    >
+                        <label className="flex min-w-0 basis-full flex-1 flex-col gap-2 sm:basis-auto">
+                            <span className="text-sm font-medium text-muted">
+                                Search collections
+                            </span>
+
+                            <input
+                                key={search}
+                                type="search"
+                                name="search"
+                                defaultValue={search}
+                                placeholder="Enter a collection name"
+                                maxLength={100}
+                                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted focus:border-teal"
+                            />
+                        </label>
+
+                        <button
+                            type="submit"
+                            className={buttonClass}
+                        >
+                            Search
+                        </button>
+
+                        {search && (
+                            <Link
+                                href="/collection"
+                                className="px-2 py-3 text-sm text-muted underline hover:text-accent"
+                            >
+                                Clear
+                            </Link>
+                        )}
+                    </form>
+
+                    {matchingCollections === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+                            <h3 className="font-semibold">
+                                No collections found
+                            </h3>
+
+                            <p className="mt-2 break-words text-sm text-muted">
+                                No collections match “{search}”.
+                                Try another name or clear the search.
+                            </p>
+
+                            <Link
+                                href="/collection"
+                                className="mt-4 inline-block text-sm font-medium text-accent hover:underline"
+                            >
+                                Show all collections →
+                            </Link>
+                        </div>
+                    ) : (
+                        <>
+                            <p className="text-sm text-muted">
+                                Showing {offset + 1}–
+                                {Math.min(
+                                    offset + PAGE_SIZE,
+                                    matchingCollections
+                                )}{" "}
+                                of {matchingCollections} collections
+                            </p>
+
+                            <ul className="space-y-3">
+                                {collections.map((collection) => {
+                                    const cardCount = Number(
+                                        collection.card_count
+                                    );
+
+                                    return (
+                                        <li
+                                            key={collection.id}
+                                            className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-teal/50 sm:gap-5 sm:p-5"
+                                        >
+                                            <Link
+                                                href={`/collection/${collection.id}`}
+                                                className="group flex min-w-0 flex-1 items-center gap-4 rounded-lg py-1 text-foreground hover:text-foreground"
+                                            >
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent sm:flex"
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.5"
+                                                        className="h-6 w-6"
+                                                    >
+                                                        <rect
+                                                            x="7"
+                                                            y="4"
+                                                            width="12"
+                                                            height="16"
+                                                            rx="2"
+                                                        />
+                                                        <path
+                                                            d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h1"
+                                                            strokeLinecap="round"
+                                                        />
+                                                    </svg>
+                                                </span>
+
+                                                <div className="min-w-0 flex-1">
+                                                    <h3 className="break-words text-lg font-semibold transition-colors group-hover:text-accent">
+                                                        {collection.name}
+                                                    </h3>
+
+                                                    <p className="mt-1 text-sm text-muted">
+                                                        {cardCount.toLocaleString("en-US")}{" "}
+                                                        {cardCount === 1
+                                                            ? "card"
+                                                            : "cards"}
+                                                    </p>
+                                                </div>
+
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="shrink-0 text-xl text-teal"
+                                                >
+                                                    →
+                                                </span>
+                                            </Link>
+
+                                            <div className="shrink-0 border-l border-border pl-3 sm:pl-5">
+                                                <DeleteCollectionButton
+                                                    collectionId={collection.id}
+                                                    collectionName={collection.name}
+                                                />
+                                            </div>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+
+                            {totalPages > 1 && (
+                                <nav
+                                    aria-label="Collection pages"
+                                    className="flex flex-wrap items-center justify-between gap-3 pt-2"
+                                >
+                                    {currentPage > 1 ? (
+                                        <Link
+                                            href={pageHref(currentPage - 1)}
+                                            className={paginationClass}
+                                        >
+                                            Previous
+                                        </Link>
+                                    ) : (
+                                        <span
+                                            aria-disabled="true"
+                                            className="rounded-xl border border-border px-4 py-2 text-sm text-muted opacity-40"
+                                        >
+                                            Previous
+                                        </span>
+                                    )}
+
+                                    <span className="text-sm text-muted">
+                                        Page {currentPage} of {totalPages}
+                                    </span>
+
+                                    {currentPage < totalPages ? (
+                                        <Link
+                                            href={pageHref(currentPage + 1)}
+                                            className={paginationClass}
+                                        >
+                                            Next
+                                        </Link>
+                                    ) : (
+                                        <span
+                                            aria-disabled="true"
+                                            className="rounded-xl border border-border px-4 py-2 text-sm text-muted opacity-40"
+                                        >
+                                            Next
+                                        </span>
+                                    )}
+                                </nav>
+                            )}
+                        </>
+                    )}
+                </section>
+            )}
         </div>
     );
 }

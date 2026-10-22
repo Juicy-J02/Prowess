@@ -74,7 +74,7 @@ const variantKey = (id: string, finish: string) =>
     `${id}:${finish}`;
 
 const selectClass =
-    "rounded-lg border bg-white p-3 text-black dark:bg-zinc-900 dark:text-white";
+    "w-full rounded-xl border border-border bg-background p-3 text-foreground";
 
 function selection(value: unknown): string {
     if (
@@ -266,7 +266,7 @@ async function recordCollectionSnapshot(
     }
 
     // Scope 0 represents all collections combined.
-    // Incomplete observations have a null total.
+    // Only cards with available prices contribute to the total.
     await db.execute(
         `INSERT INTO collection_value_snapshots (
             user_id,
@@ -410,12 +410,12 @@ async function loadHistory(
 
 function changeClass(change: number | null) {
     if (change === null || change === 0) {
-        return "text-zinc-600 dark:text-zinc-400";
+        return "text-muted";
     }
 
     return change > 0
-        ? "text-green-600 dark:text-green-400"
-        : "text-red-600 dark:text-red-400";
+        ? "text-green-400"
+        : "text-red-400";
 }
 
 function signedMoney(cents: number) {
@@ -442,8 +442,8 @@ function Metric({
     change?: number | null;
 }) {
     return (
-        <section className="rounded-xl border p-5">
-            <h2 className="text-sm text-zinc-500">
+        <section className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="text-sm text-muted">
                 {title}
             </h2>
 
@@ -590,10 +590,10 @@ function HistoryGraph({
 
     const stroke =
         comparison > 0
-            ? "#16a34a"
+            ? "#4ade80"
             : comparison < 0
-                ? "#dc2626"
-                : "#64748b";
+                ? "#f87171"
+                : "#44e0c5";
 
     const ticks = Array.from(
         { length: 5 },
@@ -608,6 +608,7 @@ function HistoryGraph({
                 <Metric
                     title="Latest recorded reference value"
                     value={money(last.cents)}
+                    change={last.cents}
                 />
 
                 <Metric
@@ -628,7 +629,7 @@ function HistoryGraph({
                 />
             </div>
 
-            <div className="overflow-x-auto rounded-lg border bg-white p-2 dark:bg-zinc-950">
+            <div className="overflow-x-auto rounded-xl border border-border bg-background p-3 text-muted">
                 <svg
                     viewBox={`0 0 ${chart.width} ${chart.height}`}
                     className="h-auto min-w-[540px] w-full"
@@ -638,12 +639,7 @@ function HistoryGraph({
                         : "transaction"
                         } value from ${first.day} to ${last.day}`}
                 >
-                    <title>
-                        {type === "collection"
-                            ? "Collection"
-                            : "Transaction"}{" "}
-                        reference value over time
-                    </title>
+                    <title>{`${type === "collection" ? "Collection" : "Transaction"} reference value over time`}</title>
 
                     <desc>
                         Dots show complete recorded daily values.
@@ -681,7 +677,7 @@ function HistoryGraph({
                             x2={chart.width - chart.right}
                             y1={chart.y(baseline)}
                             y2={chart.y(baseline)}
-                            stroke="#64748b"
+                            stroke="#44e0c5"
                             strokeDasharray="6 5"
                         />
                     )}
@@ -744,7 +740,7 @@ function HistoryGraph({
                 </svg>
             </div>
 
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
                 Solid line: recorded value.{" "}
                 {baseline !== null && (
                     <>
@@ -761,7 +757,7 @@ function HistoryGraph({
             </p>
 
             {!enoughHistory && (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted">
                     You have one complete snapshot date.
                     Visit again on a different day to show a trend.
                 </p>
@@ -795,14 +791,18 @@ async function selectValueView(formData: FormData) {
 
 export default function ValuePage({ searchParams }: Props) {
     return (
-        <main className="mx-auto w-full max-w-5xl px-6 py-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 text-foreground sm:px-6">
             <h1 className="text-3xl font-semibold">
                 Value Tracker
             </h1>
+            <p className="mt-3 max-w-2xl text-muted">
+                Follow your collection’s reference value and compare
+                your purchases and sales with current market prices.
+            </p>
 
             <Suspense
                 fallback={
-                    <p className="mt-6">
+                    <p role="status" className="panel mt-6 text-muted">
                         Loading value…
                     </p>
                 }
@@ -984,9 +984,9 @@ async function UserValue({ searchParams }: Props) {
         <div className="mt-6 space-y-6">
             <form
                 action={selectValueView}
-                className="flex flex-wrap items-end gap-4"
+                className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface p-5"
             >
-                <label className="flex flex-1 flex-col gap-2">
+                <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium">
                     View value for
 
                     <select
@@ -1035,7 +1035,7 @@ async function UserValue({ searchParams }: Props) {
 
                 <button
                     type="submit"
-                    className="rounded-lg bg-blue-600 px-4 py-3 text-white"
+                    className="rounded-xl border border-accent/50 bg-surface px-5 py-3 font-semibold text-accent transition-colors hover:border-accent hover:bg-surface-hover"
                 >
                     View
                 </button>
@@ -1047,7 +1047,7 @@ async function UserValue({ searchParams }: Props) {
                         {transaction.name}
                     </h2>
 
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-muted">
                         Original transaction quantities are tracked
                         even if cards were later sold or moved.
                     </p>
@@ -1069,6 +1069,7 @@ async function UserValue({ searchParams }: Props) {
                                     : "Priced portion (incomplete)"
                             }
                             value={money(currentCents)}
+                            change={currentCents}
                         />
 
                         <Metric
@@ -1110,7 +1111,7 @@ async function UserValue({ searchParams }: Props) {
                         />
                     </div>
 
-                    <p className="text-sm text-amber-600">
+                    <p className="text-sm text-amber-300">
                         {transaction.type === "purchase"
                             ? "This compares the original purchased basket with today's market. It is not realized profit or remaining inventory value."
                             : "This compares sale proceeds with today's reference value of the sold basket. It is not sale profit, which requires acquisition costs."}
@@ -1130,6 +1131,7 @@ async function UserValue({ searchParams }: Props) {
                                     : "Current collection value"
                             }
                             value={money(currentCents)}
+                            change={currentCents}
                         />
 
                         <Metric
@@ -1147,8 +1149,8 @@ async function UserValue({ searchParams }: Props) {
                         role={snapshotError ? "status" : undefined}
                         className={
                             snapshotError
-                                ? "text-sm text-amber-600"
-                                : "text-sm text-zinc-500"
+                                ? "text-sm text-amber-300"
+                                : "text-sm text-muted"
                         }
                     >
                         {snapshotError
@@ -1162,6 +1164,7 @@ async function UserValue({ searchParams }: Props) {
                         <Metric
                             title="Priced current collection value"
                             value={money(currentCents)}
+                            change={currentCents}
                         />
 
                         <Metric
@@ -1202,7 +1205,7 @@ async function UserValue({ searchParams }: Props) {
                         }
                     />
 
-                    <p className="text-sm text-amber-600">
+                    <p className="text-sm text-amber-300">
                         Collection value + sales − purchases.
                         This is not confirmed profit: imported
                         inventory may have unknown acquisition
@@ -1212,7 +1215,7 @@ async function UserValue({ searchParams }: Props) {
                 </>
             )}
 
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
                 USD reference prices match printing and finish;
                 condition and language are not adjusted.
                 Prices are cached for up to one hour.
@@ -1231,13 +1234,13 @@ async function UserValue({ searchParams }: Props) {
             )}
 
             {(transaction || collectionMode) && (
-                <section className="space-y-3 rounded-xl border p-5">
+                <section className="space-y-3 rounded-xl border border-border bg-surface p-5">
                     <h2 className="text-xl font-semibold">
                         {transaction ? "Transaction" : "Collection"}{" "}
                         value over time
                     </h2>
 
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-muted">
                         {transaction
                             ? "Last 90 days of recorded prices on or after the transaction date (UTC). These are daily observations, not exact purchase-time quotes. Missing prices leave transaction totals incomplete."
                             : "Shows the total for cards with available prices. Unpriced cards are excluded. Coverage shows how many printing/finish variants were priced. Changes in coverage can affect the total."}
@@ -1256,7 +1259,7 @@ async function UserValue({ searchParams }: Props) {
                                 : "No saved snapshots yet. Collection snapshots are recorded automatically when you view this page."}
                         </p>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto rounded-xl border border-border">
                             <table className="w-full text-left text-sm">
                                 <thead>
                                     <tr>
@@ -1269,7 +1272,7 @@ async function UserValue({ searchParams }: Props) {
                                         <th className="p-3">
                                             {transaction
                                                 ? "Comparison"
-                                                : "Change since first complete snapshot"}
+                                                : "Change since first priced snapshot"}
                                         </th>
                                         <th className="p-3">
                                             Coverage
@@ -1300,7 +1303,7 @@ async function UserValue({ searchParams }: Props) {
                                         return (
                                             <tr
                                                 key={point.day}
-                                                className="border-t"
+                                                className="border-t border-border"
                                             >
                                                 <td className="p-3">
                                                     {point.day}
@@ -1340,7 +1343,7 @@ async function UserValue({ searchParams }: Props) {
             )}
 
             {!transaction && !collectionMode && (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted">
                     Select a transaction for its fixed-basket
                     history, or select a collection to track
                     its total value automatically over time.

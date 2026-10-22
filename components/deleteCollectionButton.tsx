@@ -72,15 +72,32 @@ export default function DeleteCollectionButton({
                 onClick={() => void deleteCollection()}
                 disabled={busy}
                 aria-label={`Delete ${collectionName}`}
-                className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:hover:bg-red-950"
+                aria-busy={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/30 bg-background px-3 py-2 text-sm font-medium text-red-300 transition-colors enabled:hover:border-red-400/60 enabled:hover:bg-red-400/10 enabled:hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
             >
+                <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 shrink-0"
+                >
+                    <path d="M3 6h18" />
+                    <path d="M9 6V4h6v2" />
+                    <path d="m5 6 1 14h12l1-14" />
+                    <path d="M10 10v6M14 10v6" />
+                </svg>
+
                 {busy ? "Deleting…" : "Delete"}
             </button>
 
             {error && (
                 <p
                     role="alert"
-                    className="max-w-xs text-right text-sm text-red-500"
+                    className="max-w-xs break-words rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-right text-sm leading-5 text-red-300"
                 >
                     {error}
                 </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface CollectionOption {
@@ -44,6 +45,9 @@ interface CardInput {
     condition: string;
     finish: string;
     language: string;
+    cardName: string;
+    setCode: string;
+    collectorNumber: string;
 }
 
 interface Props {
@@ -66,6 +70,9 @@ function emptyCard(rowKey: number): CardInput {
         condition: "NM",
         finish: "nonfoil",
         language: "en",
+        cardName: "",
+        setCode: "",
+        collectorNumber: "",
     };
 }
 
@@ -361,6 +368,7 @@ function PurchaseCardSearch({
 }
 
 export default function TransactionForm({ collections }: Props) {
+    const router = useRouter();
     const [collectionId, setCollectionId] = useState(
         collections[0] ? String(collections[0].id) : ""
     );
@@ -497,6 +505,9 @@ export default function TransactionForm({ collections }: Props) {
                     return {
                         ...item,
                         scryfallId: "",
+                        cardName: "",
+                        setCode: "",
+                        collectorNumber: "",
                         availableFinishes: [],
                         finish: "",
                     };
@@ -510,6 +521,9 @@ export default function TransactionForm({ collections }: Props) {
                 return {
                     ...item,
                     scryfallId: printing.id,
+                    cardName: printing.name,
+                    setCode: printing.set,
+                    collectorNumber: printing.collector_number,
                     availableFinishes: supported,
                     finish: supported.includes(item.finish)
                         ? item.finish
@@ -622,6 +636,9 @@ export default function TransactionForm({ collections }: Props) {
                     notes: notes.trim(),
                     items: items.map((item) => ({
                         scryfallId: item.scryfallId,
+                        cardName: item.cardName,
+                        setCode: item.setCode,
+                        collectorNumber: item.collectorNumber,
                         quantity: Number(item.quantity),
                         condition: item.condition,
                         finish: item.finish,
@@ -639,7 +656,7 @@ export default function TransactionForm({ collections }: Props) {
             }
 
             setSuccess(
-                `Transaction #${data.transactionId} saved successfully.`
+                `Transaction saved successfully.`
             );
 
             setName("");
@@ -652,6 +669,9 @@ export default function TransactionForm({ collections }: Props) {
             setOwnedCards([]);
             setLoadingCards(type === "sale");
             setReload((current) => current + 1);
+
+            // Refresh the transaction history table and count.
+            router.refresh();
         } catch (error) {
             setError(
                 error instanceof Error
@@ -1085,7 +1105,7 @@ export default function TransactionForm({ collections }: Props) {
                 <button
                     type="submit"
                     disabled={busy || saleUnavailable}
-                    className="rounded-lg bg-blue-600 px-4 py-3 text-white disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-xl border border-[#efd079] bg-[#efd079] px-6 py-3 text-lg font-bold text-[#03101f] shadow-lg shadow-[#efd079]/15 transition-colors enabled:hover:border-[#ffe7a1] enabled:hover:bg-[#ffe7a1] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                     {busy ? "Saving…" : "Save Transaction"}
                 </button>
